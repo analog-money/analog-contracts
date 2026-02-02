@@ -1,0 +1,10 @@
+# Keep compiled contract artifacts for deployment
+# out
+broadcast
+
+# Exclude Foundry cache and build artifacts
+cache
+cache_forge
+out/build-info/
+
+.envout/
