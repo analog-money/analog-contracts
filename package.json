@@ -1,0 +1,17 @@
+{
+  "name": "contracts2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "forge build",
+    "dev": "FOUNDRY_PROFILE=lite forge build",
+    "postinstall": "git clone --depth 1 https://github.com/beefyfinance/beefy-zk.git node_modules/beefy-zk 2>/dev/null || true && git clone --depth 1 https://github.com/Avantis-Labs/avantis_trader_sdk.git lib/avantis-contracts 2>/dev/null || true"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.0",
+    "@openzeppelin/contracts-upgradeable": "^4.9.3"
+  },
+  "devDependencies": {
+    "balancer-v3-monorepo": "balancer/balancer-v3-monorepo"
+  }
+}

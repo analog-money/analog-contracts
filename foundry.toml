@@ -1,0 +1,36 @@
+[profile.default]
+src = "src"
+out = "out"
+allow_paths = ["../../node_modules", "node_modules"]
+libs = ["lib"]
+remappings = [
+    "@openzeppelin/contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
+    "@openzeppelin/contracts/=../../node_modules/@openzeppelin/contracts/",
+    "@openzeppelin-4/contracts/=../../node_modules/@openzeppelin/contracts/",
+    "openzeppelin-contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
+    "solidity-bytes-utils/=node_modules/solidity-bytes-utils/",
+    "avantis-contracts/=lib/avantis-contracts/avantis_trader_sdk/abis/",
+    "beefy-zk/=node_modules/beefy-zk/contracts/"
+]
+
+# Compiler settings
+solc = "0.8.28"
+optimizer = true
+optimizer_runs = 1  # Minimal value to minimize deployment size
+via_ir = true
+
+# Test settings
+test = "test"
+
+# Gas settings
+gas_reports = ["*"]
+
+auto_detect_solc = true
+
+sparse_mode = true
+
+[lint]
+lint_on_build = false
+
+[profile.lite]
+optimizer = false
