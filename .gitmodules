@@ -1,0 +1,12 @@
+[submodule "lib/balancer-v3-monorepo"]
+	path = lib/balancer-v3-monorepo
+	url = https://github.com/balancer/balancer-v3-monorepo.git
+[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/foundry-rs/forge-std.git
+[submodule "lib/avantis-contracts"]
+	path = lib/avantis-contracts
+	url = https://github.com/Avantis-Protocol/avantis-contracts.git
+[submodule "node_modules/beefy-zk"]
+	path = node_modules/beefy-zk
+	url = https://github.com/beefyfinance/beefy-zk.git
