@@ -176,10 +176,10 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
   // -------------------------------------------------------------------------
 
   /**
-   * @notice Deposit USDC and receive vault shares.
+   * @notice Deposit USDC and receive vault shares. Restricted to vault owner.
    * @param assets Amount of USDC to deposit (6 decimals).
    */
-  function deposit(uint256 assets) external nonReentrant {
+  function deposit(uint256 assets) external onlyOwner nonReentrant {
     if (assets == 0) revert InvalidAmount();
 
     // Pull USDC from user
@@ -193,10 +193,10 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
   }
 
   /**
-   * @notice Redeem vault shares for USDC.
+   * @notice Redeem vault shares for USDC. Restricted to vault owner.
    * @param shares Amount of shares to burn.
    */
-  function withdraw(uint256 shares) external nonReentrant {
+  function withdraw(uint256 shares) external onlyOwner nonReentrant {
     if (shares == 0) revert InvalidAmount();
     if (balanceOf(msg.sender) < shares) revert InsufficientLiquidity();
 
@@ -226,11 +226,11 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
   function invest(
     SwapCall[] calldata swapCalls,
     uint256 minAmount0,
-    uint256 minAmount1
+    uint256 minAmount1,
+    uint256 minBptAmountOut
   ) external onlyController nonReentrant {
     // Execute off-chain provided 1inch swaps from USDC to token0/token1
     if (swapCalls.length > 0) {
-      // Approvals must be set off-chain or via a separate helper if needed.
       SwapExecutor.executeSwaps(swapCalls, router);
     }
 
@@ -239,29 +239,25 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
 
     if (bal0 < minAmount0 || bal1 < minAmount1) revert InsufficientLiquidity();
 
-    // Approve Permit2 for pool tokens; the router will use Permit2 to pull
-    // tokens from this vault into the Vault.
+    // Approve Permit2 for pool tokens (scoped to exact amounts needed)
     IERC20(token0).safeApprove(PERMIT2, 0);
     IERC20(token0).safeApprove(PERMIT2, bal0);
     IERC20(token1).safeApprove(PERMIT2, 0);
     IERC20(token1).safeApprove(PERMIT2, bal1);
 
-    // Set Permit2 allowances for the Router as spender (Permit2 checks
-    // allowance keyed by (owner, msg.sender, token)).
-    IPermit2(PERMIT2).approve(token0, balancerRouter, type(uint160).max, type(uint48).max);
-    IPermit2(PERMIT2).approve(token1, balancerRouter, type(uint160).max, type(uint48).max);
+    // Set Permit2 allowances for the Router (scoped to exact amounts, 1-hour expiry)
+    uint48 expiration = uint48(block.timestamp + 1 hours);
+    IPermit2(PERMIT2).approve(token0, balancerRouter, uint160(bal0), expiration);
+    IPermit2(PERMIT2).approve(token1, balancerRouter, uint160(bal1), expiration);
 
     uint256[] memory maxAmountsIn = new uint256[](2);
     maxAmountsIn[0] = bal0;
     maxAmountsIn[1] = bal1;
 
-    // For Balancer v3, we call the Router's unbalanced add liquidity helper.
-    // This will transfer tokens from this vault into the Vault and mint BPT
-    // to this contract.
     IRouter(balancerRouter).addLiquidityUnbalanced(
       pool,
       maxAmountsIn,
-      0, // minBptAmountOut
+      minBptAmountOut,
       false, // wethIsEth
       ""
     );
@@ -273,24 +269,21 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
    * @notice Exit Balancer pool back to pool tokens and optionally swap them to USDC.
    * @dev
    * - Controller decides how many BPT to burn via `bptAmountIn`.
-   * - Expects the vault to already hold BPT (not tracked explicitly here).
+   * - BPT token is the immutable `pool` address (in Balancer V3, pool address IS the BPT).
    * - After exit, controller can use `swapCalls` to convert pool tokens back to USDC.
    */
   function divest(
-    address bptToken,
     uint256 bptAmountIn,
     uint256[] calldata minAmountsOut,
     SwapCall[] calldata swapCalls
   ) external onlyController nonReentrant {
-    require(bptToken != address(0), "Invalid BPT");
     if (bptAmountIn == 0) revert InvalidAmount();
 
     // Approve Balancer Router to pull BPT when exiting.
-    IERC20(bptToken).safeApprove(balancerRouter, 0);
-    IERC20(bptToken).safeApprove(balancerRouter, bptAmountIn);
+    // In Balancer V3, pool address IS the BPT token.
+    IERC20(pool).safeApprove(balancerRouter, 0);
+    IERC20(pool).safeApprove(balancerRouter, bptAmountIn);
 
-    // For Balancer v3, we call the Router's proportional remove liquidity
-    // helper to burn BPT and receive the underlying pool tokens here.
     IRouter(balancerRouter).removeLiquidityProportional(
       pool,
       bptAmountIn,
@@ -304,7 +297,6 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
 
     // Optionally convert pool tokens back to USDC via 1inch swaps
     if (swapCalls.length > 0) {
-      // Approvals must be managed off-chain; here we just execute swaps
       SwapExecutor.executeSwaps(swapCalls, router);
     }
 

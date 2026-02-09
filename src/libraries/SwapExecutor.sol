@@ -13,9 +13,13 @@ struct SwapCall {
 library SwapExecutor {
     error Invalid(bytes4 selector);
     error InvalidTarget(address expected, address actual);
+    error InvalidApproveSpender(address spender);
     error SwapFail();
 
     /// @notice Execute swap calls via 1inch router
+    /// @dev For non-router targets, only approve(address,uint256) is allowed
+    ///      and the spender must be the router itself (prevents approving tokens
+    ///      to arbitrary addresses if the controller key is compromised).
     /// @param calls Array of swap calls to execute
     /// @param router Address of 1inch router
     function executeSwaps(
@@ -23,19 +27,21 @@ library SwapExecutor {
         address router
     ) internal {
         for (uint256 i; i < calls.length;) {
-            // Allow calls to router OR approve calls to any token
             if (calls[i].target == router) {
-                // All calls to router are valid
+                // Direct router calls are valid (swaps)
             } else {
-                // Calls to other targets must be approve(address,uint256)
+                // Non-router targets must be approve(address,uint256)
                 bytes4 selector = bytes4(calls[i].data[:4]);
                 if (selector != 0x095ea7b3) {
-                     // Debug: if target detection failed but it SHOULD have been router?
-                     // No, if we are here, target != router.
-                     revert Invalid(selector);
+                    revert Invalid(selector);
+                }
+                // Validate the spender (first arg) is the router
+                address spender = abi.decode(calls[i].data[4:36], (address));
+                if (spender != router) {
+                    revert InvalidApproveSpender(spender);
                 }
             }
-            
+
             (bool success,) = calls[i].target.call{value: calls[i].value}(calls[i].data);
             if (!success) revert SwapFail();
             unchecked { ++i; }

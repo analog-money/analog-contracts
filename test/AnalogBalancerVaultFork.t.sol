@@ -166,7 +166,7 @@ contract AnalogBalancerVaultForkTest is Test {
 
     // Invest into Balancer v3 pool using the live Vault.
     SwapCall[] memory noSwaps = new SwapCall[](0);
-    vault.invest(noSwaps, 0, 0);
+    vault.invest(noSwaps, 0, 0, 0);
 
     vm.stopPrank();
 
@@ -177,7 +177,7 @@ contract AnalogBalancerVaultForkTest is Test {
     uint256[] memory minAmountsOut = new uint256[](2);
 
     vm.prank(USER);
-    vault.divest(BALANCER_POOL, bptBalance, minAmountsOut, noSwaps);
+    vault.divest(bptBalance, minAmountsOut, noSwaps);
 
     uint256 bal0After = IERC20(token0).balanceOf(address(vault));
     uint256 bal1After = IERC20(token1).balanceOf(address(vault));

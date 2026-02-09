@@ -94,7 +94,7 @@ contract AnalogBalancerVaultFactory is Ownable {
     address user,
     string calldata vaultName,
     string calldata vaultSymbol
-  ) external returns (address vault) {
+  ) external onlyOwner returns (address vault) {
     if (user == address(0)) revert InvalidUser();
     if (vaults[user] != address(0)) revert VaultAlreadyExists();
 
