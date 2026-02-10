@@ -5,7 +5,7 @@
   "scripts": {
     "compile": "forge build",
     "dev": "FOUNDRY_PROFILE=lite forge build",
-    "postinstall": "git clone --depth 1 https://github.com/beefyfinance/beefy-zk.git node_modules/beefy-zk 2>/dev/null || true && git clone --depth 1 https://github.com/Avantis-Labs/avantis_trader_sdk.git lib/avantis-contracts 2>/dev/null || true"
+    "postinstall": "git clone --depth 1 https://github.com/analog-money/beefy-zk.git node_modules/beefy-zk 2>/dev/null || true"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.0",

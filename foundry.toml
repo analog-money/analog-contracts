@@ -9,7 +9,6 @@ remappings = [
     "@openzeppelin-4/contracts/=../../node_modules/@openzeppelin/contracts/",
     "openzeppelin-contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
     "solidity-bytes-utils/=node_modules/solidity-bytes-utils/",
-    "avantis-contracts/=lib/avantis-contracts/avantis_trader_sdk/abis/",
     "beefy-zk/=node_modules/beefy-zk/contracts/"
 ]
 
