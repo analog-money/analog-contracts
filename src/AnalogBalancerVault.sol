@@ -78,6 +78,7 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
   error OnlyController();
   error InvalidAmount();
   error InsufficientLiquidity();
+  error TokensNotFullyConverted();
 
   // -------------------------------------------------------------------------
   // Modifiers
@@ -295,9 +296,19 @@ contract AnalogBalancerVault is ERC20, ReentrancyGuard {
     uint256 bal0 = IERC20(token0).balanceOf(address(this));
     uint256 bal1 = IERC20(token1).balanceOf(address(this));
 
-    // Optionally convert pool tokens back to USDC via 1inch swaps
+    // Convert pool tokens back to USDC via 1inch swaps.
+    // All-or-nothing: after swaps, non-USDC tokens must be fully converted
+    // to prevent partial-theft attacks via dstReceiver manipulation.
     if (swapCalls.length > 0) {
       SwapExecutor.executeSwaps(swapCalls, router);
+
+      uint256 dust = 1000; // wei dust threshold for rounding
+      if (token0 != usdc && IERC20(token0).balanceOf(address(this)) > dust) {
+        revert TokensNotFullyConverted();
+      }
+      if (token1 != usdc && IERC20(token1).balanceOf(address(this)) > dust) {
+        revert TokensNotFullyConverted();
+      }
     }
 
     uint256 usdcReceived = IERC20(usdc).balanceOf(address(this));
