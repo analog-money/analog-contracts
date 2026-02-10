@@ -109,6 +109,7 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         string calldata vaultName,
         string calldata vaultSymbol
     ) external returns (address vault, address strategy) {
+        if (msg.sender != owner() && msg.sender != controller) revert InvalidUser();
         if (user == address(0)) revert InvalidUser();
         // Removed one-vault-per-user limit to allow multiple vaults
 
