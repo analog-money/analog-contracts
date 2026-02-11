@@ -255,52 +255,6 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     }
 
     /**
-     * @notice Update controller for a specific vault
-     * @param vault Vault address
-     * @param _controller New controller address
-     */
-    function updateVaultController(
-        address vault,
-        address _controller
-    ) external onlyOwner {
-        if (_controller == address(0)) revert InvalidController();
-
-        AnalogVault(payable(vault)).setController(_controller);
-    }
-
-    /**
-     * @notice Batch update controller for multiple vaults
-     * @param vaultAddresses Array of vault addresses
-     * @param _controller New controller address
-     */
-    function batchUpdateVaultController(
-        address[] calldata vaultAddresses,
-        address _controller
-    ) external onlyOwner {
-        if (_controller == address(0)) revert InvalidController();
-
-        uint256 count = vaultAddresses.length;
-        for (uint256 i = 0; i < count; i++) {
-            AnalogVault(payable(vaultAddresses[i])).setController(_controller);
-        }
-    }
-
-    /**
-     * @notice Batch upgrade controller for all deployed vaults
-     * @param _controller New controller address
-     */
-    function batchUpdateAllVaultControllers(
-        address _controller
-    ) external onlyOwner {
-        if (_controller == address(0)) revert InvalidController();
-
-        uint256 count = allVaults.length;
-        for (uint256 i = 0; i < count; i++) {
-            AnalogVault(payable(allVaults[i])).setController(_controller);
-        }
-    }
-
-    /**
      * @notice Set the latest implementation address for vault upgrades
      * @param _implementation Address of the new AnalogVault implementation
      */
