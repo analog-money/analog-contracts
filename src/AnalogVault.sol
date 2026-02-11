@@ -430,7 +430,7 @@ contract AnalogVault is BeefyVaultConcLiq, UUPSUpgradeable {
     }
 
     function setController(address _controller) external {
-        if (msg.sender != owner() && msg.sender != factory) revert OnlyFact();
+        if (msg.sender != owner()) revert OnlyOwner();
         controller = _controller;
         emit CtrlUpdated(_controller);
     }

@@ -341,7 +341,7 @@ contract AnalogVaultForkTest is Test {
         );
     }
 
-    function test_update_vault_controller() public {
+    function test_owner_can_set_vault_controller() public {
         // Create vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
@@ -362,12 +362,12 @@ contract AnalogVaultForkTest is Test {
             "Initial controller should be set"
         );
 
-        // Update vault controller
+        // Vault owner (USER1) can update controller
         address newController = address(
             0x4444444444444444444444444444444444444444
         );
-        vm.prank(address(this)); // Test contract is factory owner
-        factory.updateVaultController(vaultAddr, newController);
+        vm.prank(USER1);
+        vault.setController(newController);
 
         // Verify updated
         assertEq(
@@ -375,6 +375,26 @@ contract AnalogVaultForkTest is Test {
             newController,
             "Vault controller should be updated"
         );
+    }
+
+    function test_factory_cannot_set_vault_controller() public {
+        // Create vault and strategy
+        (address vaultAddr, ) = factory.createVault(
+            USER1,
+            STRATEGY_NAME,
+            "Test Vault",
+            "TV"
+        );
+
+        AnalogVault vault = AnalogVault(payable(vaultAddr));
+
+        // Factory (address(this)) cannot update vault controller
+        address newController = address(
+            0x4444444444444444444444444444444444444444
+        );
+        vm.prank(address(factory));
+        vm.expectRevert();
+        vault.setController(newController);
     }
 
     function test_only_owner_can_update_controller() public {
