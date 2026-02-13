@@ -64,17 +64,20 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
 
     /**
      * @notice Initialize the factory
+     * @param _owner Initial owner address
      * @param _usdc USDC token address
      * @param _strategyFactory StrategyFactory address for creating strategies
      * @param _controller Initial controller address
      */
     function initialize(
+        address _owner,
         address _usdc,
         address _strategyFactory,
         address _controller,
         address _implementation
     ) external initializer {
         __Ownable_init();
+        _transferOwnership(_owner);
         __UUPSUpgradeable_init();
 
         if (_usdc == address(0)) revert InvalidUSDC();

@@ -82,6 +82,7 @@ contract UpgradeSecurityHardening is Script {
         address token1 = vm.envAddress("BALANCER_TOKEN1");
 
         AnalogBalancerVaultFactory newBalancerFactory = new AnalogBalancerVaultFactory(
+            deployer, // owner
             USDC,
             balVault,
             balRouter,

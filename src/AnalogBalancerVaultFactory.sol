@@ -45,6 +45,7 @@ contract AnalogBalancerVaultFactory is Ownable {
 
   /**
    * @notice Constructor sets immutable addresses and initial controller
+   * @param _owner Initial owner address
    * @param _usdc USDC token address
    * @param _balancerVault Balancer v3 Vault address
    * @param _balancerRouter Balancer v3 Router address
@@ -55,6 +56,7 @@ contract AnalogBalancerVaultFactory is Ownable {
    * @param _controller Initial controller address
    */
   constructor(
+    address _owner,
     address _usdc,
     address _balancerVault,
     address _balancerRouter,
@@ -64,7 +66,7 @@ contract AnalogBalancerVaultFactory is Ownable {
     address _router,
     address _controller
   ) Ownable() {
-    _transferOwnership(msg.sender);
+    _transferOwnership(_owner);
     if (_usdc == address(0)) revert InvalidUSDC();
     if (_balancerVault == address(0)) revert InvalidBalancerVault();
     if (_balancerRouter == address(0)) revert InvalidBalancerRouter();
