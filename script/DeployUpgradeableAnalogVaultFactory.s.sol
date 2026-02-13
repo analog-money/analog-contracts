@@ -32,6 +32,7 @@ contract DeployUpgradeableAnalogVaultFactory is Script {
         bytes memory initData = abi.encodeCall(
             AnalogVaultFactory.initialize,
             (
+                deployer,
                 USDC,
                 strategyFactory,
                 controller,

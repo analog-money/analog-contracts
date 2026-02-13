@@ -66,6 +66,7 @@ contract DeployAnalogBalancerVaultFactory is Script {
     // Deploy factory
     console.log("Deploying AnalogBalancerVaultFactory...");
     AnalogBalancerVaultFactory factory = new AnalogBalancerVaultFactory(
+      msg.sender,
       USDC,
       BALANCER_VAULT,
       BALANCER_ROUTER,
