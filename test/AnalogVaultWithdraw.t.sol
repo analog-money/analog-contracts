@@ -8,6 +8,7 @@ import {StrategyFactory} from "../src/StrategyFactory.sol";
 import {
     TestStrategyPassiveManagerUniswap
 } from "../src/TestStrategyPassiveManagerUniswap.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultWithdrawTest
@@ -77,8 +78,17 @@ contract AnalogVaultWithdrawTest is Test {
         // Deploy AnalogVault implementation
         AnalogVault vaultImplementation = new AnalogVault();
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory();
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
+            USDC,
+            address(strategyFactory),
+            CONTROLLER,
+            address(vaultImplementation)
+        );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
     }
 
     /**
@@ -92,6 +102,7 @@ contract AnalogVaultWithdrawTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -115,6 +126,7 @@ contract AnalogVaultWithdrawTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -148,6 +160,7 @@ contract AnalogVaultWithdrawTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -171,6 +184,7 @@ contract AnalogVaultWithdrawTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -201,6 +215,7 @@ contract AnalogVaultWithdrawTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 

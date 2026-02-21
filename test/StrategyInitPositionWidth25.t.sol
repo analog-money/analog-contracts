@@ -34,6 +34,12 @@ contract StrategyInitPositionWidth25Test is Test {
     address deployer = 0x25e21aBcd8FF244914eb03dA2EBA7ea62EfF6821;
 
     function setUp() public {
+        string memory rpcUrl = "https://mainnet.base.org";
+        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
+            rpcUrl = url;
+        } catch {}
+        vm.createSelectFork(rpcUrl);
+
         vm.deal(deployer, 100 ether);
         vm.label(POOL, "UNIV3_POOL");
         vm.label(QUOTER, "UNIV3_QUOTER");

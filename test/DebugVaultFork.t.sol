@@ -13,8 +13,15 @@ contract DebugVaultFork is Test {
   AnalogVault vault;
 
   function setUp() public {
-    // Use latest block - don't specify block number
-    vm.createSelectFork(vm.envString("BASE_RPC_URL"));
+    string memory rpcUrl = "https://mainnet.base.org";
+    try vm.envString("BASE_RPC_URL") returns (string memory url) {
+        rpcUrl = url;
+    } catch {
+        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url2) {
+            rpcUrl = url2;
+        } catch {}
+    }
+    vm.createSelectFork(rpcUrl);
     vault = AnalogVault(payable(VAULT_ADDRESS));
   }
 

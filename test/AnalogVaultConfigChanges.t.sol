@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultConfigChangesTest
@@ -32,17 +33,23 @@ contract AnalogVaultConfigChangesTest is Test {
 
     function setUp() public {
         // Fork Base mainnet for initialization to work
-        vm.createSelectFork("https://mainnet.base.org");
+        string memory rpcUrl = "https://mainnet.base.org";
+        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
+            rpcUrl = url;
+        } catch {}
+        vm.createSelectFork(rpcUrl);
 
         // Set up test accounts
         owner = address(this);
         nonOwner = address(0xBAD);
 
-        // Deploy vault (no constructor arguments for beacon proxy pattern)
-        vault = new AnalogVault();
-
-        // Initialize vault properly (normally done by factory through proxy)
-        vault.initialize(STRATEGY, "Test Vault", "TV", CONTROLLER, owner);
+        // Deploy vault behind proxy (constructor calls _disableInitializers)
+        AnalogVault vaultImpl = new AnalogVault();
+        bytes memory initData = abi.encodeWithSelector(
+            AnalogVault.initialize.selector,
+            STRATEGY, "Test Vault", "TV", CONTROLLER, owner
+        );
+        vault = AnalogVault(payable(address(new ERC1967Proxy(address(vaultImpl), initData))));
     }
 
     /**

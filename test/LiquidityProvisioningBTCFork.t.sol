@@ -15,6 +15,7 @@ import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
 import "forge-std/console.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title LiquidityProvisioningBTCForkTest
@@ -132,8 +133,17 @@ contract LiquidityProvisioningBTCForkTest is Test {
             address(vaultImplementation)
         );
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory();
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
+            USDC,
+            address(strategyFactory),
+            CONTROLLER,
+            address(vaultImplementation)
+        );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
         vm.label(address(factory), "ANALOG_VAULT_FACTORY");
 
         // Give users some ETH for gas
@@ -219,6 +229,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             vaultName,
             vaultSymbol
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Verify vault was created
         assertTrue(vaultAddr != address(0), "Vault should be created");
@@ -268,6 +279,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             "BTC LP Vault",
             "BTC-LP"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -301,6 +313,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             "BTC LP Vault",
             "BTC-LP"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -328,6 +341,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             "BTC LP Vault",
             "BTC-LP"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -352,6 +366,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             "BTC LP Vault",
             "BTC-LP"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);

@@ -37,7 +37,7 @@ contract StrategyInitExactParamsForkTest is Test {
         try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
             rpcUrl = url;
         } catch {}
-        vm.createFork(rpcUrl);
+        vm.createSelectFork(rpcUrl);
         
         vm.deal(deployer, 100 ether);
         vm.deal(STRATEGIST, 100 ether);

@@ -14,6 +14,7 @@ import {IStrategyConcLiq} from "beefy-zk/interfaces/beefy/IStrategyConcLiq.sol";
 import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultWithdrawForkTest
@@ -90,8 +91,17 @@ contract AnalogVaultWithdrawForkTest is Test {
         // Deploy AnalogVault implementation
         AnalogVault vaultImplementation = new AnalogVault();
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory();
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
+            USDC,
+            address(strategyFactory),
+            CONTROLLER,
+            address(vaultImplementation)
+        );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
 
         // Give users some ETH for gas
         vm.deal(USER1, 10 ether);
@@ -123,7 +133,8 @@ contract AnalogVaultWithdrawForkTest is Test {
             WETH
         );
 
-        TestStrategyPassiveManagerUniswap(strategy).initialize(
+        TestStrategyPassiveManagerUniswap strat = TestStrategyPassiveManagerUniswap(strategy);
+        strat.initialize(
             POOL,
             QUOTER,
             positionWidth,
@@ -131,6 +142,11 @@ contract AnalogVaultWithdrawForkTest is Test {
             lpToken1ToNativePath,
             commonAddresses
         );
+
+        // Set maxTickDeviation so isCalm() returns true on fork
+        // Default is 0 (unset), which makes isCalm() always false
+        // tickSpacing=10, so max allowed = tickSpacing*4-1 = 39
+        strat.setDeviation(int56(39));
     }
 
     /**
@@ -147,6 +163,7 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         vm.label(vaultAddr, "VAULT");
 
@@ -156,6 +173,7 @@ contract AnalogVaultWithdrawForkTest is Test {
 
         // Initialize strategy (must be done after vault creation)
         initializeStrategy(strategyAddr, vaultAddr);
+
 
         // Wait a bit for initialization
         vm.roll(block.number + 1);
@@ -319,21 +337,11 @@ contract AnalogVaultWithdrawForkTest is Test {
         // Verify that executeSwap can be called (it will revert if swap fails, which is expected without valid calldata)
         vm.startPrank(CONTROLLER);
 
-        // If we have tokens that need swapping, try to execute (will fail without valid calldata)
+        // Execute swap with empty swap calls and minAmountOut=0
+        // This succeeds because the vault has USDC from the withdrawal
         if (swapPending && (swapToken0 > 0 || swapToken1 > 0)) {
-            if (token0 == USDC && token1 == USDC) {
-                // Both are USDC, executeSwap should work with empty swap calls
-                vault.executeSwap(swapCalls, 0);
-                console.log("executeSwap succeeded (tokens already USDC)");
-            } else {
-                // Need actual swap calldata - this will fail with SwapFail
-                // This is expected and validates the error handling
-                vm.expectRevert(); // SwapFail() will be thrown
-                vault.executeSwap(swapCalls, 0);
-                console.log(
-                    "executeSwap correctly reverted (no valid swap calldata)"
-                );
-            }
+            vault.executeSwap(swapCalls, 0);
+            console.log("executeSwap succeeded");
         }
 
         vm.stopPrank();
@@ -354,6 +362,7 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Try to execute swap when no swap is pending
@@ -378,9 +387,11 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         address strategyAddr = address(vault.strategy());
         initializeStrategy(strategyAddr, vaultAddr);
+
 
         // Deposit and deploy
         deal(USDC, USER1, 1000 * 1e6, true);
@@ -433,6 +444,7 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         address strategyAddr = address(vault.strategy());
         initializeStrategy(strategyAddr, vaultAddr);
@@ -464,6 +476,7 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         vm.label(vaultAddr, "VAULT");
 
@@ -473,6 +486,8 @@ contract AnalogVaultWithdrawForkTest is Test {
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
+
+
         vm.roll(block.number + 1);
 
         // Fund USER1 with USDC
@@ -669,9 +684,12 @@ contract AnalogVaultWithdrawForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         address strategyAddr = address(vault.strategy());
         initializeStrategy(strategyAddr, vaultAddr);
+
+
         vm.roll(block.number + 1);
 
         // Fund USER1 with USDC

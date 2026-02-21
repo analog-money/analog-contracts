@@ -14,6 +14,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultForkTest
@@ -116,8 +117,17 @@ contract AnalogVaultForkTest is Test {
             address(vaultImplementation)
         );
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory();
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
+            USDC,
+            address(strategyFactory),
+            CONTROLLER,
+            address(vaultImplementation)
+        );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
         vm.label(address(factory), "ANALOG_VAULT_FACTORY");
 
         // Give users some ETH for gas
@@ -197,6 +207,7 @@ contract AnalogVaultForkTest is Test {
             vaultName,
             vaultSymbol
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Verify vault was created
         assertTrue(vaultAddr != address(0), "Vault should be created");
@@ -246,6 +257,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -279,6 +291,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -305,6 +318,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -349,6 +363,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -385,6 +400,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -429,6 +445,7 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -657,12 +674,13 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         vm.label(vaultAddr, "VAULT");
 
         // Get strategy address from vault
         address strategyAddr = address(vault.strategy());
-        
+
         // Initialize strategy so wants() returns correct tokens
         initializeStrategy(strategyAddr, vaultAddr);
 
@@ -779,12 +797,13 @@ contract AnalogVaultForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
         vm.label(vaultAddr, "VAULT");
 
         // Get strategy address from vault
         address strategyAddr = address(vault.strategy());
-        
+
         // Initialize strategy so wants() returns correct tokens
         initializeStrategy(strategyAddr, vaultAddr);
 

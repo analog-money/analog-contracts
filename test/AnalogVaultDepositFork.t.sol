@@ -13,6 +13,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultDepositForkTest
@@ -106,8 +107,17 @@ contract AnalogVaultDepositForkTest is Test {
             address(vaultImplementation)
         );
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory();
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
+            USDC,
+            address(strategyFactory),
+            CONTROLLER,
+            address(vaultImplementation)
+        );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
         vm.label(address(factory), "ANALOG_VAULT_FACTORY");
 
         // Give users some ETH for gas
@@ -188,6 +198,7 @@ contract AnalogVaultDepositForkTest is Test {
                 "Test Vault",
                 "TV"
             );
+            AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
             console.log("Created vault at:", vaultAddr);
             console.log("Expected vault at:", VAULT_ADDRESS);
@@ -333,6 +344,7 @@ contract AnalogVaultDepositForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -366,6 +378,7 @@ contract AnalogVaultDepositForkTest is Test {
             "Test Vault",
             "TV"
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
