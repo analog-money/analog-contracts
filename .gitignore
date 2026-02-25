@@ -7,4 +7,5 @@ cache
 cache_forge
 out/build-info/
 
+.env
 .envout/
