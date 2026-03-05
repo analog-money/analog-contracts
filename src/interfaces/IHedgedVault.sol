@@ -57,6 +57,7 @@ interface IHedgedVault {
   event FeesHarvested(uint256 fees0, uint256 fees1, uint256 timestamp);
 
   event EmergencyExit(uint256 usdcRecovered, uint256 timestamp);
+  event TokensRescued(address indexed token, address indexed to, uint256 amount);
   event PauseChanged(bool paused);
   event ControllerUpdated(address indexed oldController, address indexed newController);
 
@@ -77,6 +78,7 @@ interface IHedgedVault {
   error InvalidAmount();
   error SlippageExceeded();
   error NotCalm();
+  error OnlySelf();
 
   // === USER FUNCTIONS ===
 
@@ -161,6 +163,13 @@ interface IHedgedVault {
    * @dev Owner only, irreversible
    */
   function emergencyExit() external;
+
+  /**
+   * @notice Rescue tokens stuck in vault after emergency exit
+   * @param token ERC20 token address to rescue
+   * @param to Recipient address
+   */
+  function rescueTokens(address token, address to) external;
 
   /**
    * @notice Pause deposits and withdrawals

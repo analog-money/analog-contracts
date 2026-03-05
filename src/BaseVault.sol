@@ -247,8 +247,8 @@ abstract contract BaseVault is
   function emergencyExit() external virtual override onlyOwner {
     emergencyExitTriggered = true;
     _pause();
-    _withdrawAllFromAMM();
-    _swapAllToUSDC();
+    try this.doEmergencyWithdrawFromAMM() {} catch {}
+    try this.doEmergencySwapAllToUSDC() {} catch {}
     uint256 usdcBalance = IERC20(USDC).balanceOf(address(this));
     if (usdcBalance > 0) {
       IERC20(USDC).safeTransfer(owner(), usdcBalance);
@@ -256,6 +256,26 @@ abstract contract BaseVault is
     totalShares = 0;
     delete pending;
     emit EmergencyExit(usdcBalance, block.timestamp);
+  }
+
+  function doEmergencyWithdrawFromAMM() external {
+    if (msg.sender != address(this)) revert OnlySelf();
+    _withdrawAllFromAMM();
+  }
+
+  function doEmergencySwapAllToUSDC() external {
+    if (msg.sender != address(this)) revert OnlySelf();
+    _swapAllToUSDC();
+  }
+
+  function rescueTokens(address token, address to) external override onlyOwner {
+    if (!emergencyExitTriggered) revert InvalidOperation();
+    if (to == address(0)) revert InvalidAddress();
+    uint256 balance = IERC20(token).balanceOf(address(this));
+    if (balance > 0) {
+      IERC20(token).safeTransfer(to, balance);
+      emit TokensRescued(token, to, balance);
+    }
   }
 
   function setPaused(bool _paused) external override onlyOwner {
