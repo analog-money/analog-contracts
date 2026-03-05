@@ -226,7 +226,7 @@ contract DebugVaultFork is Test {
       // But first, let's check if we can read other public variables
       console.log("");
       console.log("=== Testing other view functions ===");
-      try vault.usdc() returns (address usdcAddr) {
+      try vault.USDC() returns (address usdcAddr) {
         console.log("usdc() works:", usdcAddr);
       } catch {
         console.log("usdc() failed");
@@ -360,15 +360,19 @@ contract DebugVaultFork is Test {
     }
     console.log("");
 
-    // 9. Check if calm
-    try vault.isCalm() returns (bool isCalm) {
-      console.log("=== Vault State ===");
-      console.log("Is Calm:", isCalm);
-    } catch Error(string memory reason) {
-      console.log("ERROR checking isCalm():", reason);
-    } catch (bytes memory lowLevelData) {
-      console.log("ERROR checking isCalm() (low-level)");
-      console.logBytes(lowLevelData);
+    // 9. Check if calm (via strategy)
+    if (strategyAddress != address(0)) {
+      (bool calmSuccess, bytes memory calmData) = strategyAddress.staticcall(
+        abi.encodeWithSignature("isCalm()")
+      );
+      if (calmSuccess && calmData.length > 0) {
+        bool isCalm = abi.decode(calmData, (bool));
+        console.log("=== Vault State ===");
+        console.log("Strategy Is Calm:", isCalm);
+      } else {
+        console.log("=== Vault State ===");
+        console.log("Could not read isCalm from strategy");
+      }
     }
     console.log("");
 

@@ -100,39 +100,29 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     /**
      * @notice Create a vault and strategy for a user
      * @param user User address who will own the vault
-     * @param strategyName Name of the strategy to create (e.g., "StrategyPassiveManagerUniswap")
-     * @param vaultName Name of the vault token
-     * @param vaultSymbol Symbol of the vault token
+     * @param strategyName Name of the strategy to create
      * @return vault Address of the deployed vault
      * @return strategy Address of the deployed strategy
      */
     function createVault(
         address user,
-        string calldata strategyName,
-        string calldata vaultName,
-        string calldata vaultSymbol
+        string calldata strategyName
     ) external returns (address vault, address strategy) {
         if (msg.sender != owner() && msg.sender != controller) revert InvalidUser();
         if (user == address(0)) revert InvalidUser();
-        // Removed one-vault-per-user limit to allow multiple vaults
 
         // Create strategy using StrategyFactory
         StrategyFactory factory = StrategyFactory(strategyFactory);
         strategy = factory.createStrategy(strategyName);
         if (strategy == address(0)) revert StrategyCreationFailed();
 
-        // Deploy vault as UUPSProxy using CREATE2 with user address + nonce as salt
-        // Use block.timestamp as nonce to allow multiple vaults per user
         bytes32 salt = keccak256(abi.encodePacked(user, block.timestamp, allVaults.length));
 
-        // Deploy UUPSProxy pointing to latest implementation
         bytes memory initData = abi.encodeWithSelector(
-            AnalogVault.initialize.selector,
-            strategy,
-            vaultName,
-            vaultSymbol,
+            bytes4(keccak256("initialize(address,address,address)")),
+            msg.sender, // deployer as initial owner (will transfer later)
             controller,
-            msg.sender // deployer as initial owner (will transfer later)
+            strategy
         );
 
         vault = address(
@@ -168,35 +158,20 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         return vaults[user];
     }
 
-    /**
-     * @notice Predict vault address for a user before deployment
-     * @param user User address
-     * @param strategy Address of the strategy (predetermined)
-     * @param vaultName Name of the vault token (needed for init data)
-     * @param vaultSymbol Symbol of the vault token (needed for init data)
-     * @return Predicted vault address
-     */
+    /// @notice Predict vault address before deployment
+    /// @dev Salt includes block.timestamp, so this is only useful within the same block as createVault
     function predictVaultAddress(
-        address user,
-        address strategy,
-        string calldata vaultName,
-        string calldata vaultSymbol
+        address caller,
+        address strategyAddr,
+        uint256 timestamp
     ) external view returns (address) {
-        bytes32 salt = bytes32(uint256(uint160(user)));
+        bytes32 salt = keccak256(abi.encodePacked(caller, timestamp, allVaults.length));
 
-        // Note: We need to know the strategy address to predict the vault address
-        // Since strategy creation is dynamic, we can't predict without creating the strategy first
-        // This is a placeholder that assumes strategy address is known
-        // In practice, you'd need to predict or know the strategy address
-
-        // Calculate CREATE2 address for UUPSProxy
         bytes memory initData = abi.encodeWithSelector(
-            AnalogVault.initialize.selector,
-            strategy, // strategy address
-            vaultName,
-            vaultSymbol,
+            bytes4(keccak256("initialize(address,address,address)")),
+            caller,
             controller,
-            user
+            strategyAddr
         );
 
         bytes memory proxyCreationCode = abi.encodePacked(

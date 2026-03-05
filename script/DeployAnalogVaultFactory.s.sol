@@ -65,7 +65,7 @@ contract DeployAnalogVaultFactory is Script {
 
         // First, deploy the vault implementation
         console.log("Deploying AnalogVault implementation...");
-        AnalogVault vaultImpl = new AnalogVault();
+        AnalogVault vaultImpl = new AnalogVault(USDC);
         console.log("Vault implementation deployed at:", address(vaultImpl));
         console.log("");
 

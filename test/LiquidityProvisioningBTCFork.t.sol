@@ -5,7 +5,6 @@ import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
 import {AnalogVaultFactory} from "../src/AnalogVaultFactory.sol";
 import {StrategyFactory} from "../src/StrategyFactory.sol";
-import {SwapCall} from "../src/libraries/SwapExecutor.sol";
 import {
     TestStrategyPassiveManagerUniswap
 } from "../src/TestStrategyPassiveManagerUniswap.sol";
@@ -126,7 +125,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         );
 
         // Deploy AnalogVault implementation
-        AnalogVault vaultImplementation = new AnalogVault();
+        AnalogVault vaultImplementation = new AnalogVault(USDC);
         vm.label(address(vaultImplementation), "ANALOG_VAULT_IMPL");
         console.log(
             "Deployed AnalogVault implementation at:",
@@ -225,9 +224,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         // Create vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            vaultName,
-            vaultSymbol
+            STRATEGY_NAME
         );
         AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
@@ -249,7 +246,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
             address(factory),
             "Vault factory should be set"
         );
-        assertEq(vault.usdc(), USDC, "Vault USDC should be set");
+        assertEq(vault.USDC(), USDC, "Vault USDC should be set");
         assertEq(
             vault.controller(),
             CONTROLLER,
@@ -275,9 +272,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         // Create vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "BTC LP Vault",
-            "BTC-LP"
+            STRATEGY_NAME
         );
         AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
@@ -309,9 +304,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         // Create vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "BTC LP Vault",
-            "BTC-LP"
+            STRATEGY_NAME
         );
         AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
@@ -337,9 +330,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         // Create vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "BTC LP Vault",
-            "BTC-LP"
+            STRATEGY_NAME
         );
         AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
@@ -362,9 +353,7 @@ contract LiquidityProvisioningBTCForkTest is Test {
         // Step 1: Deploy vault and strategy
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "BTC LP Vault",
-            "BTC-LP"
+            STRATEGY_NAME
         );
         AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 

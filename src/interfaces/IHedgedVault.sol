@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {
-  IERC20Upgradeable
-} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-
 /**
  * @title IHedgedVault
- * @notice Interface for perpetual-hedged AMM vaults
- * @dev Replaced ERC4626 with simple Vault Ops
+ * @notice Interface for single-owner AMM vaults
+ * @dev No ERC20 — vaults are user-bound, shares are not tradable
  */
-interface IHedgedVault is IERC20Upgradeable {
+interface IHedgedVault {
   // === STRUCTS ===
 
   struct HedgePosition {
@@ -32,7 +28,7 @@ interface IHedgedVault is IERC20Upgradeable {
 
   struct PendingOps {
     uint128 depositAmount;
-    uint128 withdrawShares;
+    uint128 withdrawAmount;
     address withdrawRecipient;
     uint8 flags; // Bitfield: bit0=deposit, bit1=withdraw
   }
@@ -61,7 +57,7 @@ interface IHedgedVault is IERC20Upgradeable {
   event FeesHarvested(uint256 fees0, uint256 fees1, uint256 timestamp);
 
   event EmergencyExit(uint256 usdcRecovered, uint256 timestamp);
-  event Paused(bool paused);
+  event PauseChanged(bool paused);
   event ControllerUpdated(address indexed oldController, address indexed newController);
 
   // === ERRORS ===

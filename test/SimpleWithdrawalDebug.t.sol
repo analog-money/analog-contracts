@@ -18,7 +18,7 @@ contract SimpleWithdrawalDebug is Test {
     // Replace with actual vault address that's experiencing the issue
     address constant EXISTING_VAULT = 0x0000000000000000000000000000000000000000; // TODO: Set actual vault
     
-    function testCalculateWithdrawalAmounts() public view {
+    function testCalculateWithdrawalAmounts() public pure {
         console.log("=== Withdrawal Amount Calculation Test ===\n");
         
         // Simulate vault state
@@ -80,7 +80,7 @@ contract SimpleWithdrawalDebug is Test {
         }
     }
     
-    function testCorrectCalculation() public view {
+    function testCorrectCalculation() public pure {
         console.log("\n=== CORRECT Calculation (using original balances) ===\n");
         
         uint256 mockVaultEquity = 9_999_999;
@@ -102,7 +102,7 @@ contract SimpleWithdrawalDebug is Test {
         console.log("  Needed from AMM:", neededFromAMM);
     }
     
-    function testIncorrectCalculation() public view {
+    function testIncorrectCalculation() public pure {
         console.log("\n=== INCORRECT Calculation (using post-beforeAction balances) ===\n");
         
         uint256 mockVaultEquity = 9_999_999;

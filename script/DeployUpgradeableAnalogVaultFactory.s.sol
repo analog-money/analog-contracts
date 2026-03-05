@@ -21,7 +21,7 @@ contract DeployUpgradeableAnalogVaultFactory is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // 1. Deploy Vault Implementation
-        AnalogVault vaultImpl = new AnalogVault();
+        AnalogVault vaultImpl = new AnalogVault(USDC);
         console.log("Vault Implementation:", address(vaultImpl));
 
         // 2. Deploy Factory Implementation

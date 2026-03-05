@@ -26,6 +26,7 @@ import {AnalogVaultFactory} from "../src/AnalogVaultFactory.sol";
  *     --verify
  */
 contract DeployAnalogVaultImplementation is Script {
+  address constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
   // Environment variables (optional)
   address factoryAddress = vm.envOr("FACTORY_ADDRESS", address(0));
 
@@ -49,7 +50,7 @@ contract DeployAnalogVaultImplementation is Script {
 
     // Deploy new AnalogVault implementation
     console.log("1. Deploying new AnalogVault implementation...");
-    AnalogVault newImplementation = new AnalogVault();
+    AnalogVault newImplementation = new AnalogVault(USDC);
     console.log("   New Implementation deployed at:", address(newImplementation));
     console.log("");
 

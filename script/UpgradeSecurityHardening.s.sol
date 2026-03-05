@@ -59,7 +59,7 @@ contract UpgradeSecurityHardening is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // ── Step 1: Deploy new AnalogVault implementation ──
-        AnalogVault newVaultImpl = new AnalogVault();
+        AnalogVault newVaultImpl = new AnalogVault(USDC);
         console.log("New AnalogVault implementation:", address(newVaultImpl));
 
         // ── Step 2: Deploy new AnalogVaultFactory implementation ──

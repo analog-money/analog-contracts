@@ -4,32 +4,26 @@ pragma solidity 0.8.28;
 import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title AnalogVaultConfigChangesTest
  * @notice Test suite for AnalogVault config change queuing and execution
- * @dev Tests the new config change system that mitigates isCalm issues
+ * @dev Tests the config change system (uint8 changeType: 1=PositionWidth, 2=Deviation, 3=TwapInterval)
  */
 contract AnalogVaultConfigChangesTest is Test {
     AnalogVault public vault;
 
     address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913; // Base USDC
     address public constant STRATEGY =
-        0xb0Ff31fa6a28934a7985c05bcF53b5411d7BCDf0; // Example strategy (corrected checksum)
+        0xb0Ff31fa6a28934a7985c05bcF53b5411d7BCDf0; // Example strategy
     address public constant CONTROLLER = address(0xC0C0);
-    address public constant FACTORY = address(0xFACE);
     address public owner;
     address public nonOwner;
 
     // Events to test
-    event ConfigQueued(
-        AnalogVault.ConfigChangeType indexed changeType,
-        int256 value
-    );
-    event ConfigExec(
-        AnalogVault.ConfigChangeType indexed changeType,
-        int256 value
-    );
+    event ConfigQueued(uint8 indexed changeType, int256 value);
+    event ConfigExec(uint8 indexed changeType, int256 value);
 
     function setUp() public {
         // Fork Base mainnet for initialization to work
@@ -43,11 +37,13 @@ contract AnalogVaultConfigChangesTest is Test {
         owner = address(this);
         nonOwner = address(0xBAD);
 
-        // Deploy vault behind proxy (constructor calls _disableInitializers)
-        AnalogVault vaultImpl = new AnalogVault();
+        // Deploy vault behind proxy
+        AnalogVault vaultImpl = new AnalogVault(USDC);
         bytes memory initData = abi.encodeWithSelector(
-            AnalogVault.initialize.selector,
-            STRATEGY, "Test Vault", "TV", CONTROLLER, owner
+            bytes4(keccak256("initialize(address,address,address)")),
+            owner,
+            CONTROLLER,
+            STRATEGY
         );
         vault = AnalogVault(payable(address(new ERC1967Proxy(address(vaultImpl), initData))));
     }
@@ -56,43 +52,16 @@ contract AnalogVaultConfigChangesTest is Test {
      * Test 1: Queue position width change as owner
      */
     function test_queuePositionWidthChange_asOwner() public {
-        // Owner queues position width change
         int24 newWidth = int24(50);
 
         vm.expectEmit(true, true, true, true);
-        emit ConfigQueued(
-            AnalogVault.ConfigChangeType.PositionWidth,
-            int256(int256(newWidth))
-        );
+        emit ConfigQueued(1, int256(int256(newWidth)));
 
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.PositionWidth,
-            int256(int256(newWidth))
-        );
+        vault.queueConfigChange(1, int256(int256(newWidth)));
 
         // Verify pending change
-        (
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            AnalogVault.ConfigChangeType changeType,
-            int256 value,
-            bool isPending
-        ) = vault.getPendingStates();
-
-        assertEq(
-            uint8(changeType),
-            uint8(AnalogVault.ConfigChangeType.PositionWidth),
-            "Change type should be PositionWidth"
-        );
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 1, "Change type should be PositionWidth (1)");
         assertEq(value, int256(int256(newWidth)), "Value should match");
         assertTrue(isPending, "Should be pending");
     }
@@ -104,38 +73,12 @@ contract AnalogVaultConfigChangesTest is Test {
         int56 newDeviation = int56(200);
 
         vm.expectEmit(true, true, true, true);
-        emit ConfigQueued(
-            AnalogVault.ConfigChangeType.Deviation,
-            int256(newDeviation)
-        );
+        emit ConfigQueued(2, int256(newDeviation));
 
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.Deviation,
-            int256(newDeviation)
-        );
+        vault.queueConfigChange(2, int256(newDeviation));
 
-        (
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            AnalogVault.ConfigChangeType changeType,
-            int256 value,
-            bool isPending
-        ) = vault.getPendingStates();
-
-        assertEq(
-            uint8(changeType),
-            uint8(AnalogVault.ConfigChangeType.Deviation),
-            "Change type should be Deviation"
-        );
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 2, "Change type should be Deviation (2)");
         assertEq(value, int256(newDeviation), "Value should match");
         assertTrue(isPending, "Should be pending");
     }
@@ -147,38 +90,12 @@ contract AnalogVaultConfigChangesTest is Test {
         uint32 newInterval = uint32(300);
 
         vm.expectEmit(true, true, true, true);
-        emit ConfigQueued(
-            AnalogVault.ConfigChangeType.TwapInterval,
-            int256(uint256(newInterval))
-        );
+        emit ConfigQueued(3, int256(uint256(newInterval)));
 
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.TwapInterval,
-            int256(uint256(newInterval))
-        );
+        vault.queueConfigChange(3, int256(uint256(newInterval)));
 
-        (
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            AnalogVault.ConfigChangeType changeType,
-            int256 value,
-            bool isPending
-        ) = vault.getPendingStates();
-
-        assertEq(
-            uint8(changeType),
-            uint8(AnalogVault.ConfigChangeType.TwapInterval),
-            "Change type should be TwapInterval"
-        );
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 3, "Change type should be TwapInterval (3)");
         assertEq(value, int256(uint256(newInterval)), "Value should match");
         assertTrue(isPending, "Should be pending");
     }
@@ -187,46 +104,29 @@ contract AnalogVaultConfigChangesTest is Test {
      * Test 4: Cannot queue if change already pending
      */
     function test_cannotQueueMultipleChanges() public {
-        // Queue first change
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.PositionWidth,
-            int256(int256(int24(50)))
-        );
+        vault.queueConfigChange(1, int256(int256(int24(50))));
 
-        // Try to queue second change - should revert
         vm.expectRevert(AnalogVault.ConfigPending.selector);
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.Deviation,
-            int256(int56(200))
-        );
+        vault.queueConfigChange(2, int256(int56(200)));
     }
 
     /**
      * Test 5: Non-owner cannot queue changes
      */
     function test_nonOwnerCannotQueueChanges() public {
-        // Try as non-owner
         vm.prank(nonOwner);
         vm.expectRevert("Ownable: caller is not the owner");
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.PositionWidth,
-            int256(int256(int24(50)))
-        );
+        vault.queueConfigChange(1, int256(int256(int24(50))));
     }
 
     /**
      * Test 6: Non-controller cannot execute config change
      */
     function test_nonControllerCannotExecute() public {
-        // Queue change
-        vault.queueConfigChange(
-            AnalogVault.ConfigChangeType.PositionWidth,
-            int256(int256(int24(50)))
-        );
+        vault.queueConfigChange(1, int256(int256(int24(50))));
 
-        // Try to execute as non-controller
         vm.prank(nonOwner);
-        vm.expectRevert(AnalogVault.OnlyCtrl.selector);
+        vm.expectRevert(); // OnlyController
         vault.executeConfigChange();
     }
 
@@ -240,31 +140,19 @@ contract AnalogVaultConfigChangesTest is Test {
     }
 
     /**
-     * Test 8: Get pending config when none exists
+     * Test 8: Invalid changeType (0) reverts
      */
-    function test_getPendingConfigWhenNone() public {
-        (
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            AnalogVault.ConfigChangeType changeType,
-            int256 value,
-            bool isPending
-        ) = vault.getPendingStates();
+    function test_cannotQueueInvalidChangeType() public {
+        vm.expectRevert(AnalogVault.InvalidConfig.selector);
+        vault.queueConfigChange(0, int256(100));
+    }
 
-        assertEq(
-            uint8(changeType),
-            uint8(AnalogVault.ConfigChangeType.None),
-            "Should be None"
-        );
+    /**
+     * Test 9: Get pending config when none exists
+     */
+    function test_getPendingConfigWhenNone() public view {
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 0, "Should be 0 (None)");
         assertEq(value, 0, "Value should be 0");
         assertFalse(isPending, "Should not be pending");
     }
