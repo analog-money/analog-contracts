@@ -28,6 +28,10 @@ interface IStrategyConfig {
   function setTwapInterval(uint32 _interval) external;
 }
 
+interface IStrategyRewardPool {
+  function setRewardPool(address _rewardPool) external;
+}
+
 /**
  * @title AnalogVault
  * @notice Non-hedged vault that delegates AMM management to StrategyPassiveManagerUniswap
@@ -281,6 +285,15 @@ contract AnalogVault is BaseVault {
       cfg.setTwapInterval(uint32(uint256(val)));
     }
     emit ConfigExec(typ, val);
+  }
+
+  // === STRATEGY ADMIN (controller-only) ===
+
+  /// @notice Set the reward pool on the strategy. Required for Aerodrome strategies
+  ///         where harvest() calls IRewardPool(rewardPool).notifyRewardAmount().
+  ///         Without a valid reward pool, harvest reverts.
+  function setStrategyRewardPool(address _rewardPool) external onlyController {
+    IStrategyRewardPool(address(strategy)).setRewardPool(_rewardPool);
   }
 
   // === UPGRADE LOGIC ===
