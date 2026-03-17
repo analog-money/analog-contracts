@@ -313,7 +313,7 @@ contract AnalogVault is BaseVault {
   function _authorizeUpgrade(address impl) internal view override {
     address latest = IAnalogVaultFactory(factory).latestImplementation();
     if (impl != latest || impl == address(0)) revert InvalidStrategy();
-    if (msg.sender != owner() && msg.sender != controller) revert NotAuthorized();
+    if (msg.sender != owner()) revert NotAuthorized();
   }
 
   function upgradeToLatest() external onlyOwner {
