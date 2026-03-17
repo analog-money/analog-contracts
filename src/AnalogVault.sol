@@ -296,6 +296,18 @@ contract AnalogVault is BaseVault {
     IStrategyRewardPool(address(strategy)).setRewardPool(_rewardPool);
   }
 
+  // === REWARD POOL INTERFACE ===
+
+  /// @notice Accept reward tokens from strategy during harvest.
+  ///         Implements IRewardPool.notifyRewardAmount so the vault itself
+  ///         can be set as the strategy's rewardPool — no separate contract needed.
+  ///         Accumulated tokens can be compounded via swapTokensToUSDC.
+  function notifyRewardAmount(address token, uint256 reward, uint256) external {
+    if (reward > 0) {
+      IERC20(token).safeTransferFrom(msg.sender, address(this), reward);
+    }
+  }
+
   // === UPGRADE LOGIC ===
 
   function _authorizeUpgrade(address impl) internal view override {
