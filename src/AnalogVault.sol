@@ -287,12 +287,12 @@ contract AnalogVault is BaseVault {
     emit ConfigExec(typ, val);
   }
 
-  // === STRATEGY ADMIN (controller-only) ===
+  // === STRATEGY ADMIN (owner-only) ===
 
   /// @notice Set the reward pool on the strategy. Required for Aerodrome strategies
   ///         where harvest() calls IRewardPool(rewardPool).notifyRewardAmount().
   ///         Without a valid reward pool, harvest reverts.
-  function setStrategyRewardPool(address _rewardPool) external onlyController {
+  function setStrategyRewardPool(address _rewardPool) external onlyOwner {
     IStrategyRewardPool(address(strategy)).setRewardPool(_rewardPool);
   }
 
