@@ -156,20 +156,21 @@ contract StrategyConfigUpdateForkTest is Test {
 
         vm.startPrank(owner);
 
+        // Update position width first (before changing twap, which shifts the TWAP calc
+        // and can cause NotCalm with the new interval on a fork)
+        int24 newWidth = int24(50);
+        strategy.setPositionWidth(newWidth);
+        assertEq(strategy.positionWidth(), newWidth, "Position width updated");
+
         // Update deviation
         int56 newDeviation = int56(30);
         strategy.setDeviation(newDeviation);
         assertEq(strategy.maxTickDeviation(), newDeviation, "Deviation updated");
 
-        // Update twap interval
+        // Update twap interval last (changes TWAP calculation window)
         uint32 newTwap = uint32(300);
         strategy.setTwapInterval(newTwap);
         assertEq(strategy.twapInterval(), newTwap, "TWAP interval updated");
-
-        // Update position width (requires LP position)
-        int24 newWidth = int24(50);
-        strategy.setPositionWidth(newWidth);
-        assertEq(strategy.positionWidth(), newWidth, "Position width updated");
 
         vm.stopPrank();
     }
@@ -183,9 +184,16 @@ contract StrategyConfigUpdateForkTest is Test {
         assertFalse(success, "Call to non-strategy contract should fail");
     }
 
-    /// @notice TODO: test with actual deployed strategy addresses from DB
+    /// @notice Verify strategy config is readable after deployment + deposit
     function test_update_deployed_strategy() public {
-        vm.skip(true);
+        // Strategy deployed via setUp with active LP
+        assertEq(strategy.positionWidth(), int24(25), "Initial position width");
+        assertEq(strategy.maxTickDeviation(), int56(39), "Deviation set after init");
+        assertEq(strategy.twapInterval(), uint32(120), "Default TWAP interval");
+        assertTrue(strategy.isCalm(), "Pool should be calm");
+        assertEq(strategy.pool(), POOL, "Pool address");
+        assertEq(strategy.lpToken0(), WETH, "Token0 is WETH");
+        assertEq(strategy.lpToken1(), USDC, "Token1 is USDC");
     }
 }
 
