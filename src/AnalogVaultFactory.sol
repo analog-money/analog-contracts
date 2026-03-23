@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {
     ERC1967Proxy
 } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -16,10 +14,10 @@ import {IStrategyConcLiq} from "beefy-zk/interfaces/beefy/IStrategyConcLiq.sol";
  * @notice Factory for deploying per-user AnalogVault instances (combined vault + wrapper)
  * @dev Deploys deterministic vault addresses for each user using CREATE2
  */
-contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable {
-    // Storage variables (previously immutable)
-    address public usdc;
-    address public strategyFactory;
+contract AnalogVaultFactory is Ownable {
+    // Immutable addresses
+    address public immutable usdc;
+    address public immutable strategyFactory;
 
     // Mutable state
     address public controller;
@@ -57,29 +55,19 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     error InitializationFailed();
     error VaultNotInitialized();
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
     /**
-     * @notice Initialize the factory
-     * @param _owner Initial owner address
+     * @notice Constructor sets immutable addresses and initial controller
      * @param _usdc USDC token address
      * @param _strategyFactory StrategyFactory address for creating strategies
      * @param _controller Initial controller address
      */
-    function initialize(
-        address _owner,
+    constructor(
         address _usdc,
         address _strategyFactory,
         address _controller,
         address _implementation
-    ) external initializer {
-        __Ownable_init();
-        _transferOwnership(_owner);
-        __UUPSUpgradeable_init();
-
+    ) Ownable() {
+        _transferOwnership(msg.sender);
         if (_usdc == address(0)) revert InvalidUSDC();
         if (_strategyFactory == address(0)) revert InvalidStrategyFactory();
         if (_controller == address(0)) revert InvalidController();
@@ -92,37 +80,39 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     }
 
     /**
-     * @notice Authorize upgrade
-     * @param newImplementation Address of new implementation
-     */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    /**
      * @notice Create a vault and strategy for a user
      * @param user User address who will own the vault
-     * @param strategyName Name of the strategy to create
+     * @param strategyName Name of the strategy to create (e.g., "StrategyPassiveManagerUniswap")
+     * @param vaultName Name of the vault token
+     * @param vaultSymbol Symbol of the vault token
      * @return vault Address of the deployed vault
      * @return strategy Address of the deployed strategy
      */
     function createVault(
         address user,
-        string calldata strategyName
+        string calldata strategyName,
+        string calldata vaultName,
+        string calldata vaultSymbol
     ) external returns (address vault, address strategy) {
-        if (msg.sender != owner() && msg.sender != controller) revert InvalidUser();
         if (user == address(0)) revert InvalidUser();
+        if (vaults[user] != address(0)) revert VaultAlreadyExists();
 
         // Create strategy using StrategyFactory
         StrategyFactory factory = StrategyFactory(strategyFactory);
         strategy = factory.createStrategy(strategyName);
         if (strategy == address(0)) revert StrategyCreationFailed();
 
-        bytes32 salt = keccak256(abi.encodePacked(user, block.timestamp, allVaults.length));
+        // Deploy vault as UUPSProxy using CREATE2 with user address as salt
+        bytes32 salt = bytes32(uint256(uint160(user)));
 
+        // Deploy UUPSProxy pointing to latest implementation
         bytes memory initData = abi.encodeWithSelector(
-            bytes4(keccak256("initialize(address,address,address)")),
-            msg.sender, // deployer as initial owner (will transfer later)
+            AnalogVault.initialize.selector,
+            strategy,
+            vaultName,
+            vaultSymbol,
             controller,
-            strategy
+            user
         );
 
         vault = address(
@@ -138,11 +128,9 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
             revert InitializationFailed();
         }
 
-        // Store vault in allVaults array (keep vaults[user] for backward compat but don't enforce uniqueness)
+        // Store vault only after successful initialization
+        vaults[user] = vault;
         allVaults.push(vault);
-        if (vaults[user] == address(0)) {
-            vaults[user] = vault; // Track first vault as "primary" for backward compatibility
-        }
 
         emit VaultCreated(user, vault, strategy);
 
@@ -158,20 +146,35 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         return vaults[user];
     }
 
-    /// @notice Predict vault address before deployment
-    /// @dev Salt includes block.timestamp, so this is only useful within the same block as createVault
+    /**
+     * @notice Predict vault address for a user before deployment
+     * @param user User address
+     * @param strategyName Name of the strategy (needed for init data)
+     * @param vaultName Name of the vault token (needed for init data)
+     * @param vaultSymbol Symbol of the vault token (needed for init data)
+     * @return Predicted vault address
+     */
     function predictVaultAddress(
-        address caller,
-        address strategyAddr,
-        uint256 timestamp
+        address user,
+        string calldata strategyName,
+        string calldata vaultName,
+        string calldata vaultSymbol
     ) external view returns (address) {
-        bytes32 salt = keccak256(abi.encodePacked(caller, timestamp, allVaults.length));
+        bytes32 salt = bytes32(uint256(uint160(user)));
 
+        // Note: We need to know the strategy address to predict the vault address
+        // Since strategy creation is dynamic, we can't predict without creating the strategy first
+        // This is a placeholder that assumes strategy address is known
+        // In practice, you'd need to predict or know the strategy address
+
+        // Calculate CREATE2 address for UUPSProxy
         bytes memory initData = abi.encodeWithSelector(
-            bytes4(keccak256("initialize(address,address,address)")),
-            caller,
+            AnalogVault.initialize.selector,
+            address(0), // strategy - placeholder
+            vaultName,
+            vaultSymbol,
             controller,
-            strategyAddr
+            user
         );
 
         bytes memory proxyCreationCode = abi.encodePacked(
@@ -207,19 +210,6 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
     }
 
     /**
-     * @notice Transfer vault ownership to user (called after initialization)
-     * @param vault Vault address
-     * @param newOwner New owner address
-     * @dev Can only be called by factory owner or controller
-     */
-    function transferVaultOwnership(address vault, address newOwner) external {
-        if (msg.sender != owner() && msg.sender != controller) revert InvalidUser();
-        if (newOwner == address(0)) revert InvalidUser();
-        
-        AnalogVault(payable(vault)).transferOwnership(newOwner);
-    }
-
-    /**
      * @notice Update controller address for all future vaults
      * @param _controller New controller address
      */
@@ -230,6 +220,52 @@ contract AnalogVaultFactory is Initializable, OwnableUpgradeable, UUPSUpgradeabl
         controller = _controller;
 
         emit ControllerUpdated(oldController, _controller);
+    }
+
+    /**
+     * @notice Update controller for a specific vault
+     * @param vault Vault address
+     * @param _controller New controller address
+     */
+    function updateVaultController(
+        address vault,
+        address _controller
+    ) external onlyOwner {
+        if (_controller == address(0)) revert InvalidController();
+
+        AnalogVault(payable(vault)).setController(_controller);
+    }
+
+    /**
+     * @notice Batch update controller for multiple vaults
+     * @param vaultAddresses Array of vault addresses
+     * @param _controller New controller address
+     */
+    function batchUpdateVaultController(
+        address[] calldata vaultAddresses,
+        address _controller
+    ) external onlyOwner {
+        if (_controller == address(0)) revert InvalidController();
+
+        uint256 count = vaultAddresses.length;
+        for (uint256 i = 0; i < count; i++) {
+            AnalogVault(payable(vaultAddresses[i])).setController(_controller);
+        }
+    }
+
+    /**
+     * @notice Batch upgrade controller for all deployed vaults
+     * @param _controller New controller address
+     */
+    function batchUpdateAllVaultControllers(
+        address _controller
+    ) external onlyOwner {
+        if (_controller == address(0)) revert InvalidController();
+
+        uint256 count = allVaults.length;
+        for (uint256 i = 0; i < count; i++) {
+            AnalogVault(payable(allVaults[i])).setController(_controller);
+        }
     }
 
     /**

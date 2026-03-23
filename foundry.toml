@@ -1,15 +1,14 @@
 [profile.default]
 src = "src"
 out = "out"
-allow_paths = ["../../node_modules", "node_modules"]
-libs = ["lib"]
+libs = ["node_modules", "../../node_modules", "lib"]
 remappings = [
     "@openzeppelin/contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
     "@openzeppelin/contracts/=../../node_modules/@openzeppelin/contracts/",
     "@openzeppelin-4/contracts/=../../node_modules/@openzeppelin/contracts/",
+    "beefy-zk/=node_modules/beefy-zk/contracts/",
     "openzeppelin-contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
-    "solidity-bytes-utils/=node_modules/solidity-bytes-utils/",
-    "beefy-zk/=node_modules/beefy-zk/contracts/"
+    "solidity-bytes-utils/=node_modules/solidity-bytes-utils/"
 ]
 
 # Compiler settings

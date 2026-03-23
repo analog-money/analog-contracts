@@ -13,7 +13,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultDepositForkTest
@@ -100,24 +99,20 @@ contract AnalogVaultDepositForkTest is Test {
         );
 
         // Deploy AnalogVault implementation
-        AnalogVault vaultImplementation = new AnalogVault(USDC);
+        AnalogVault vaultImplementation = new AnalogVault();
         vm.label(address(vaultImplementation), "ANALOG_VAULT_IMPL");
         console.log(
             "Deployed AnalogVault implementation at:",
             address(vaultImplementation)
         );
 
-        // Deploy AnalogVaultFactory behind proxy with initialization
-        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
-        bytes memory factoryInitData = abi.encodeWithSelector(
-            AnalogVaultFactory.initialize.selector,
-            address(this),
+        // Deploy AnalogVaultFactory
+        factory = new AnalogVaultFactory(
             USDC,
             address(strategyFactory),
             CONTROLLER,
             address(vaultImplementation)
         );
-        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
         vm.label(address(factory), "ANALOG_VAULT_FACTORY");
 
         // Give users some ETH for gas
@@ -193,10 +188,11 @@ contract AnalogVaultDepositForkTest is Test {
 
             // Create vault and strategy
             (address vaultAddr, address strategyAddr) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-            AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
+                USER1,
+                STRATEGY_NAME,
+                "Test Vault",
+                "TV"
+            );
 
             console.log("Created vault at:", vaultAddr);
             console.log("Expected vault at:", VAULT_ADDRESS);
@@ -231,7 +227,7 @@ contract AnalogVaultDepositForkTest is Test {
             vm.startPrank(USER1);
             IERC20(USDC).approve(vaultAddr, depositAmount);
 
-            // Encode deposit call
+            // Encode the exact call data from user's request
             bytes memory callData = abi.encodeWithSignature(
                 "deposit(uint256)",
                 depositAmount
@@ -252,7 +248,7 @@ contract AnalogVaultDepositForkTest is Test {
                     bytes4 errorSelector = bytes4(returnData);
                     console.log("Error selector:", vm.toString(errorSelector));
 
-                    if (errorSelector == bytes4(keccak256("Ownable: caller is not the owner"))) {
+                    if (errorSelector == AnalogVault.OnlyOwner.selector) {
                         console.log(
                             "ERROR: OnlyVaultOwner - msg.sender is not the vault owner"
                         );
@@ -260,7 +256,7 @@ contract AnalogVaultDepositForkTest is Test {
                         console.log("vaultOwner:", vaultOwner);
                     } else if (
                         errorSelector ==
-                        bytes4(keccak256("InvalidOperation()"))
+                        AnalogVault.Insufficient.selector
                     ) {
                         console.log("ERROR: InsufficientBalance - amount is 0");
                     }
@@ -291,9 +287,8 @@ contract AnalogVaultDepositForkTest is Test {
 
             // Encode the exact call data
             bytes memory callData = abi.encodeWithSignature(
-                "deposit(uint256,address)",
-                depositAmount,
-                USER1
+                "deposit(uint256)",
+                depositAmount
             );
             console.log("Call data:", vm.toString(callData));
 
@@ -311,7 +306,7 @@ contract AnalogVaultDepositForkTest is Test {
                     bytes4 errorSelector = bytes4(returnData);
                     console.log("Error selector:", vm.toString(errorSelector));
 
-                    if (errorSelector == bytes4(keccak256("Ownable: caller is not the owner"))) {
+                    if (errorSelector == AnalogVault.OnlyOwner.selector) {
                         console.log(
                             "ERROR: OnlyVaultOwner - msg.sender is not the vault owner"
                         );
@@ -337,9 +332,10 @@ contract AnalogVaultDepositForkTest is Test {
         // Create vault and strategy for USER1
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME
+            STRATEGY_NAME,
+            "Test Vault",
+            "TV"
         );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -354,7 +350,7 @@ contract AnalogVaultDepositForkTest is Test {
         vm.startPrank(USER2);
         IERC20(USDC).approve(vaultAddr, depositAmount);
 
-        vm.expectRevert();
+        vm.expectRevert("Ownable: caller is not the owner");
         vault.deposit(depositAmount);
 
         vm.stopPrank();
@@ -369,9 +365,10 @@ contract AnalogVaultDepositForkTest is Test {
         // Create vault and strategy for USER1
         (address vaultAddr, address strategyAddr) = factory.createVault(
             USER1,
-            STRATEGY_NAME
+            STRATEGY_NAME,
+            "Test Vault",
+            "TV"
         );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         // Initialize strategy
         initializeStrategy(strategyAddr, vaultAddr);
@@ -379,8 +376,7 @@ contract AnalogVaultDepositForkTest is Test {
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Fund USER1 with USDC (USER1 IS the vault owner)
-        // minDeposit is 10 USDC (10e6), so deposit above that
-        uint256 depositAmount = 10e6; // 10 USDC
+        uint256 depositAmount = 100000; // 0.1 USDC
         deal(USDC, USER1, depositAmount, true);
 
         // Deposit as USER1 (should succeed)
@@ -396,6 +392,6 @@ contract AnalogVaultDepositForkTest is Test {
 
         console.log("Deposit succeeded! Pending amount:", pendingAmount);
 
-        // Note: Controller would call depositExecute() to complete the deposit
+        // Note: Controller would call swapAndDeploy to complete the deposit
     }
 }

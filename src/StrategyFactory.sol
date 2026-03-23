@@ -2,16 +2,19 @@
 pragma solidity 0.8.28;
 
 import {
-    ERC1967Proxy
-} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+    BeaconProxy
+} from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import {
+    UpgradeableBeacon
+} from "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // StrategyFactory with OpenZeppelin 4.9.x compatibility fixes
 // Based on beefy-zk/strategies/StrategyFactory.sol but fixed for OZ 4.9.x
 // Maintains 100% interface compatibility with the original
 contract StrategyFactory is Ownable {
-    /// @notice mapping to strategy name to latest implementation address.
-    mapping(string => address) public latestImplementation;
+    /// @notice instance mapping to strategy name with version.
+    mapping(string => UpgradeableBeacon) public instances;
 
     /// @notice approved rebalancer mapping
     mapping(address => bool) public rebalancers;
@@ -88,13 +91,9 @@ contract StrategyFactory is Ownable {
     function createStrategy(
         string calldata _strategyName
     ) external returns (address) {
-        // Create a new Beefy Strategy as a UUPS proxy of the latest implementation
-        address implementation = latestImplementation[_strategyName];
-        if (implementation == address(0)) revert("Strategy not found");
-        
-        // Deploy proxy (initializes with empty data, owner/config set separately by handler)
-        bytes memory initData = ""; 
-        ERC1967Proxy proxy = new ERC1967Proxy(implementation, initData);
+        // Create a new Beefy Strategy as a proxy of the template instance
+        UpgradeableBeacon instance = instances[_strategyName];
+        BeaconProxy proxy = new BeaconProxy(address(instance), "");
 
         emit ProxyCreated(_strategyName, address(proxy));
 
@@ -111,18 +110,14 @@ contract StrategyFactory is Ownable {
         string calldata _strategyName,
         address _implementation
     ) external onlyManager {
-        latestImplementation[_strategyName] = _implementation;
+        if (address(instances[_strategyName]) != address(0))
+            revert StratVersionExists();
+        UpgradeableBeacon beacon = new UpgradeableBeacon(_implementation);
+        beacon.transferOwnership(address(this));
+        instances[_strategyName] = beacon;
 
         // Store in our deployed strategy type array
-        bool alreadyExists = false;
-        for (uint i = 0; i < strategyTypes.length; i++) {
-            if (keccak256(bytes(strategyTypes[i])) == keccak256(bytes(_strategyName))) {
-                alreadyExists = true;
-                break;
-            }
-        }
-        if (!alreadyExists) strategyTypes.push(_strategyName);
-        
+        strategyTypes.push(_strategyName);
         emit NewStrategyAdded(_strategyName, _implementation);
     }
 
@@ -197,7 +192,7 @@ contract StrategyFactory is Ownable {
     function getImplementation(
         string calldata _strategyName
     ) external view returns (address) {
-        return latestImplementation[_strategyName];
+        return instances[_strategyName].implementation();
     }
 
     /**

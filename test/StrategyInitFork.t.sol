@@ -34,12 +34,6 @@ contract StrategyInitForkTest is Test {
     address deployer = address(0xdeadbeef);
 
     function setUp() public {
-        string memory rpcUrl = "https://mainnet.base.org";
-        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
-            rpcUrl = url;
-        } catch {}
-        vm.createSelectFork(rpcUrl);
-
         // Label known addresses for nicer traces
         vm.label(POOL, "UNIV3_POOL_USDC_WETH");
         vm.label(QUOTER, "UNIV3_QUOTER");

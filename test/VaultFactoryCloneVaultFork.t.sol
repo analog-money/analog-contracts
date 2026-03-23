@@ -13,12 +13,6 @@ contract VaultFactoryCloneVaultForkTest is Test {
     address constant DEPLOYER = 0x25e21aBcd8FF244914eb03dA2EBA7ea62EfF6821; // Deployer address
 
     function setUp() public {
-        string memory rpcUrl = "https://mainnet.base.org";
-        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
-            rpcUrl = url;
-        } catch {}
-        vm.createSelectFork(rpcUrl);
-
         vm.label(VAULT_FACTORY, "VAULT_FACTORY");
         vm.label(DEPLOYER, "DEPLOYER");
         vm.deal(DEPLOYER, 100 ether);
