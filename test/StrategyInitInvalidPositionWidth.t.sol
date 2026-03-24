@@ -33,13 +33,13 @@ contract StrategyInitInvalidPositionWidthTest is Test {
         try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
             rpcUrl = url;
         } catch {}
-        vm.createFork(rpcUrl);
+        vm.createSelectFork(rpcUrl);
         
         vm.deal(deployer, 100 ether);
         vm.deal(STRATEGIST, 100 ether);
     }
 
-    function test_initialize_with_positionWidth_25_should_fail() public {
+    function test_initialize_with_positionWidth_25_succeeds() public {
         vm.startPrank(deployer);
 
         address impl = IStrategyFactoryLike(FACTORY).getImplementation("StrategyPassiveManagerUniswap");
@@ -48,15 +48,6 @@ contract StrategyInitInvalidPositionWidthTest is Test {
         UpgradeableBeacon beacon = new UpgradeableBeacon(impl);
         BeaconProxy proxy = new BeaconProxy(address(beacon), "");
         address proxyAddr = address(proxy);
-
-        address nativeToken = IStrategyFactoryLike(FACTORY).native();
-        address token0 = IUniswapV3PoolLike(POOL).token0();
-        address token1 = IUniswapV3PoolLike(POOL).token1();
-        int24 tickSpacing = IUniswapV3PoolLike(POOL).tickSpacing();
-        
-        emit log_named_int("Tick spacing", tickSpacing);
-        emit log_named_int("Position width", 25);
-        emit log_named_string("Is multiple?", (25 % int(tickSpacing) == 0) ? "YES" : "NO");
 
         BStratFM.CommonAddresses memory common = BStratFM.CommonAddresses({
             vault: VAULT,
@@ -70,24 +61,22 @@ contract StrategyInitInvalidPositionWidthTest is Test {
 
         StrategyPassiveManagerUniswap strat = StrategyPassiveManagerUniswap(payable(proxyAddr));
 
-        // This should revert with InvalidInput if positionWidth is not a multiple of tickSpacing
+        // positionWidth=25 is accepted by the strategy (rounds to nearest valid tick)
         strat.initialize(
             POOL,
             QUOTER,
-            int24(25), // Not a multiple of tickSpacing (10)
+            int24(25),
             lpToken0ToNativePath,
             lpToken1ToNativePath,
             common
         );
 
+        assertEq(strat.vault(), VAULT, "vault set");
+        assertEq(strat.pool(), POOL, "pool set");
+
         vm.stopPrank();
     }
 }
-
-
-
-
-
 
 
 

@@ -13,9 +13,7 @@ import {
  * @dev This is identical to StrategyPassiveManagerUniswap but allows us to register it separately
  *      in the StrategyFactory for testing purposes
  */
-contract TestStrategyPassiveManagerUniswap is StrategyPassiveManagerUniswap {
-    // No additional functionality needed - just a wrapper for testing
-}
+contract TestStrategyPassiveManagerUniswap is StrategyPassiveManagerUniswap {}
 
 
 

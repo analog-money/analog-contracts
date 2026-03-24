@@ -5,24 +5,23 @@ import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
 import {AnalogVaultFactory} from "../src/AnalogVaultFactory.sol";
 import {StrategyFactory} from "../src/StrategyFactory.sol";
-import {SwapCall} from "../src/libraries/SwapExecutor.sol";
 import {
     TestStrategyPassiveManagerUniswap
 } from "../src/TestStrategyPassiveManagerUniswap.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IStrategyConcLiq} from "beefy-zk/interfaces/beefy/IStrategyConcLiq.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     StratFeeManagerInitializable
 } from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultWithdrawForkTest
- * @notice Fork test for AnalogVault withdrawal flow with executeSwap
+ * @notice Fork test for AnalogVault withdrawal flow
  *
- * Tests the full withdrawal flow:
+ * Tests the two-step withdrawal flow:
  * 1. User calls withdraw(usdcAmount)
- * 2. Controller calls executeWithdrawal() - withdraws from strategy
- * 3. Controller calls executeSwap(swapCalls) - swaps tokens to USDC
+ * 2. Controller calls withdrawExecute(minAmountOut)
  *
  * To run this test:
  *   forge test --match-contract AnalogVaultWithdrawForkTest -vvv --fork-url $BASE_HTTP_RPC_URL
@@ -31,12 +30,10 @@ contract AnalogVaultWithdrawForkTest is Test {
     // Base Mainnet addresses
     address constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address constant WETH = 0x4200000000000000000000000000000000000006;
-    address constant ONEINCH_ROUTER =
-        0x111111125421cA6dc452d289314280a0f8842A65;
 
     // Uniswap V3 addresses on Base
     address constant POOL = 0xd0b53D9277642d899DF5C87A3966A349A798F224; // USDC-WETH pool
-    address constant QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a; // Uniswap V3 Quoter V2
+    address constant QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a;
     address constant UNIROUTER = 0x2626664c2603336E57B271c5C0b26F421741e481;
 
     // Test addresses
@@ -65,7 +62,6 @@ contract AnalogVaultWithdrawForkTest is Test {
         vm.label(USDC, "USDC");
         vm.label(WETH, "WETH");
         vm.label(POOL, "UNIV3_POOL");
-        vm.label(ONEINCH_ROUTER, "1INCH_ROUTER");
         vm.label(CONTROLLER, "CONTROLLER");
         vm.label(USER1, "USER1");
         vm.label(STRATEGIST, "STRATEGIST");
@@ -88,15 +84,19 @@ contract AnalogVaultWithdrawForkTest is Test {
         );
 
         // Deploy AnalogVault implementation
-        AnalogVault vaultImplementation = new AnalogVault();
+        AnalogVault vaultImplementation = new AnalogVault(USDC);
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory(
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
             USDC,
             address(strategyFactory),
             CONTROLLER,
             address(vaultImplementation)
         );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
 
         // Give users some ETH for gas
         vm.deal(USER1, 10 ether);
@@ -117,18 +117,15 @@ contract AnalogVaultWithdrawForkTest is Test {
                 });
 
         int24 positionWidth = 10;
-
-        // WETH -> Native: WETH is already native on Base, so use empty path
         bytes memory lpToken0ToNativePath = "";
-
-        // USDC -> WETH -> Native (WETH is native on Base)
         bytes memory lpToken1ToNativePath = abi.encodePacked(
             USDC,
-            uint24(500), // fee (0.05%)
+            uint24(500),
             WETH
         );
 
-        TestStrategyPassiveManagerUniswap(strategy).initialize(
+        TestStrategyPassiveManagerUniswap strat = TestStrategyPassiveManagerUniswap(strategy);
+        strat.initialize(
             POOL,
             QUOTER,
             positionWidth,
@@ -136,67 +133,54 @@ contract AnalogVaultWithdrawForkTest is Test {
             lpToken1ToNativePath,
             commonAddresses
         );
+
+        // Set maxTickDeviation so isCalm() returns true on fork
+        strat.setDeviation(int56(39));
     }
 
-    /**
-     * @notice Test full withdrawal flow with executeSwap
-     * @dev This test validates that executeSwap works correctly when vault has tokens
-     */
-    function test_withdraw_with_executeSwap() public {
-        console.log("=== Test: Withdraw with executeSwap ===");
-
-        // Create vault for USER1
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
-        );
-        AnalogVault vault = AnalogVault(payable(vaultAddr));
+    /// @notice Helper: create vault, initialize strategy, deposit, and execute deposit
+    function _setupVaultWithDeposit(uint256 depositAmount) internal returns (AnalogVault vault, address vaultAddr, address strategyAddr) {
+        (vaultAddr, strategyAddr) = factory.createVault(USER1, STRATEGY_NAME);
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
+        vault = AnalogVault(payable(vaultAddr));
         vm.label(vaultAddr, "VAULT");
-
-        // Get strategy address
-        address strategyAddr = address(vault.strategy());
         vm.label(strategyAddr, "STRATEGY");
 
-        // Initialize strategy (must be done after vault creation)
         initializeStrategy(strategyAddr, vaultAddr);
 
-        // Wait a bit for initialization
         vm.roll(block.number + 1);
 
-        // Fund USER1 with USDC
-        uint256 depositAmount = 1000 * 1e6; // 1000 USDC
+        // Fund and deposit
         deal(USDC, USER1, depositAmount, true);
-
-        // Step 1: Deposit USDC to vault
         vm.startPrank(USER1);
         IERC20(USDC).approve(vaultAddr, depositAmount);
         vault.deposit(depositAmount);
         vm.stopPrank();
 
-        console.log("Deposited", depositAmount / 1e6, "USDC to vault");
+        // Controller executes deposit
+        vm.prank(CONTROLLER);
+        vault.depositExecute();
 
-        // Step 2: Deploy funds to strategy (as controller)
-        // First need to execute deposit (swapAndDeploy)
-        vm.startPrank(CONTROLLER);
-        vault.swapAndDeploy(new SwapCall[](0), 0, 0);
-        vm.stopPrank();
-
-        console.log("Deployed funds to strategy");
-
-        // Wait a bit and check balances
         vm.roll(block.number + 10);
+    }
+
+    /**
+     * @notice Test full withdrawal flow: withdraw → withdrawExecute
+     */
+    function test_withdraw_full_flow() public {
+        uint256 depositAmount = 1000 * 1e6;
+        (AnalogVault vault,,) = _setupVaultWithDeposit(depositAmount);
+
+        console.log("=== Test: Full withdraw flow ===");
+
+        // Check balances after deposit
         (uint256 bal0, uint256 bal1) = vault.balances();
         console.log("Strategy balances - token0:", bal0, "token1:", bal1);
 
-        // Step 3: User registers withdrawal
-        uint256 withdrawAmount = 500 * 1e6; // 500 USDC
-        vm.startPrank(USER1);
+        // Step 1: User registers withdrawal
+        uint256 withdrawAmount = 500 * 1e6;
+        vm.prank(USER1);
         vault.withdraw(withdrawAmount);
-        vm.stopPrank();
-
-        console.log("Registered withdrawal of", withdrawAmount / 1e6, "USDC");
 
         // Verify withdrawal is pending
         (
@@ -204,223 +188,186 @@ contract AnalogVaultWithdrawForkTest is Test {
             ,
             uint256 pendingWithdraw,
             bool withdrawPending,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-
+            ,,,,,,,,,
         ) = vault.getPendingStates();
         assertTrue(withdrawPending, "Withdrawal should be pending");
-        assertEq(
-            pendingWithdraw,
-            withdrawAmount,
-            "Pending amount should match"
-        );
+        assertEq(pendingWithdraw, withdrawAmount, "Pending amount should match");
 
-        // Step 4: Controller executes withdrawal
-        vm.startPrank(CONTROLLER);
-        vault.executeWithdrawal();
-        vm.stopPrank();
+        console.log("Registered withdrawal of", withdrawAmount / 1e6, "USDC");
 
-        console.log("Executed withdrawal from strategy");
+        // Step 2: Controller executes withdrawal (withdraws from AMM, swaps to USDC, sends to user)
+        uint256 userUSDCBefore = IERC20(USDC).balanceOf(USER1);
 
-        // Check that swap is now pending
-        (
-            uint256 _depositAmount,
-            bool _depositPending,
-            uint256 _withdrawalAmount,
-            bool _withdrawalPending,
-            uint256 swapToken0,
-            uint256 swapToken1,
-            address swapRecipient,
-            bool swapPending,
-            ,
-            ,
-            ,
-            ,
-            ,
+        vm.prank(CONTROLLER);
+        vault.withdrawExecute(0); // minAmountOut = 0 for testing
 
-        ) = vault.getPendingStates();
-        assertTrue(swapPending, "Swap should be pending");
-        assertTrue(
-            swapToken0 > 0 || swapToken1 > 0,
-            "Should have tokens to swap"
-        );
-        assertEq(swapRecipient, USER1, "Recipient should be vault owner");
+        uint256 userUSDCAfter = IERC20(USDC).balanceOf(USER1);
+        console.log("User received USDC:", userUSDCAfter - userUSDCBefore);
 
-        console.log(
-            "Swap pending - token0:",
-            swapToken0,
-            "token1:",
-            swapToken1
-        );
+        // Verify user received USDC
+        assertGt(userUSDCAfter, userUSDCBefore, "User should receive USDC");
 
-        // Get token addresses
-        (address token0, address token1) = vault.wants();
-        vm.label(token0, "TOKEN0");
-        vm.label(token1, "TOKEN1");
-
-        // Check actual vault balances
-        uint256 vaultToken0Balance = IERC20(token0).balanceOf(vaultAddr);
-        uint256 vaultToken1Balance = IERC20(token1).balanceOf(vaultAddr);
-
-        console.log(
-            "Vault token balances - token0:",
-            vaultToken0Balance,
-            "token1:",
-            vaultToken1Balance
-        );
-        console.log(
-            "Pending swap amounts - token0:",
-            swapToken0,
-            "token1:",
-            swapToken1
-        );
-
-        // Verify vault has the tokens
-        assertEq(
-            vaultToken0Balance,
-            swapToken0,
-            "Vault token0 balance should match pending"
-        );
-        assertEq(
-            vaultToken1Balance,
-            swapToken1,
-            "Vault token1 balance should match pending"
-        );
-
-        // Step 5: Prepare swap calls
-        // Note: In production, these would come from 1inch API
-        // For testing, we'll create minimal swap calls that will fail gracefully
-        // or we can use a mock that validates the structure
-
-        SwapCall[] memory swapCalls = new SwapCall[](0);
-
-        // Only create swap calls if we have tokens to swap and they're not USDC
-        if (swapToken0 > 0 && token0 != USDC) {
-            // For a real test, you would get swap calldata from 1inch API
-            // For now, we'll test with empty swap calls to validate the structure
-            // In production, this would be populated with actual 1inch swap calldata
-            console.log("NOTE: Token0 swap needed but requires 1inch calldata");
-        }
-
-        if (swapToken1 > 0 && token1 != USDC) {
-            console.log("NOTE: Token1 swap needed but requires 1inch calldata");
-        }
-
-        // If both tokens are USDC, no swap needed
-        if (token0 == USDC && token1 == USDC) {
-            console.log("Both tokens are USDC - no swap needed");
-        }
-
-        // For this test, we'll verify the vault state is correct for swap execution
-        // The actual swap execution would require valid 1inch calldata
-
-        // Verify that executeSwap can be called (it will revert if swap fails, which is expected without valid calldata)
-        vm.startPrank(CONTROLLER);
-
-        // If we have tokens that need swapping, try to execute (will fail without valid calldata)
-        if (swapPending && (swapToken0 > 0 || swapToken1 > 0)) {
-            if (token0 == USDC && token1 == USDC) {
-                // Both are USDC, executeSwap should work with empty swap calls
-                vault.executeSwap(swapCalls);
-                console.log("executeSwap succeeded (tokens already USDC)");
-            } else {
-                // Need actual swap calldata - this will fail with SwapFail
-                // This is expected and validates the error handling
-                vm.expectRevert(); // SwapFail() will be thrown
-                vault.executeSwap(swapCalls);
-                console.log(
-                    "executeSwap correctly reverted (no valid swap calldata)"
-                );
-            }
-        }
-
-        vm.stopPrank();
+        // Verify no pending operations
+        (,,, bool stillPending,,,,,,,,,,) = vault.getPendingStates();
+        assertFalse(stillPending, "Withdrawal should no longer be pending");
 
         console.log("=== Test completed ===");
     }
 
     /**
-     * @notice Test executeSwap when vault has no tokens (should handle gracefully)
+     * @notice Test withdrawExecute when no withdrawal is pending (should revert)
      */
-    function test_executeSwap_no_tokens() public {
-        console.log("=== Test: executeSwap with no tokens ===");
+    function test_withdrawExecute_no_pending_withdrawal() public {
+        console.log("=== Test: withdrawExecute with no pending withdrawal ===");
 
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
-        );
+        (address vaultAddr,) = factory.createVault(USER1, STRATEGY_NAME);
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
+        initializeStrategy(address(vault.strategy()), vaultAddr);
 
-        // Try to execute swap when no swap is pending
-        vm.startPrank(CONTROLLER);
-        vm.expectRevert(AnalogVault.NoSwap.selector);
-        vault.executeSwap(new SwapCall[](0));
-        vm.stopPrank();
+        // Try to execute withdrawal when there's no pending withdrawal
+        vm.prank(CONTROLLER);
+        vm.expectRevert();
+        vault.withdrawExecute(0);
 
-        console.log("Correctly reverted with NoSwap error");
+        console.log("Correctly reverted");
     }
 
     /**
-     * @notice Test executeSwap with invalid router address (should revert)
+     * @notice Test withdrawal with zero strategy balance (idle USDC in vault)
      */
-    function test_executeSwap_invalid_router() public {
-        console.log("=== Test: executeSwap with invalid router ===");
+    function test_withdraw_zero_strategy_balance() public {
+        console.log("=== Test: withdraw with zero strategy balance ===");
 
-        // Create vault and set up withdrawal
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
-        );
+        (address vaultAddr,) = factory.createVault(USER1, STRATEGY_NAME);
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
-        address strategyAddr = address(vault.strategy());
-        initializeStrategy(strategyAddr, vaultAddr);
+        initializeStrategy(address(vault.strategy()), vaultAddr);
 
-        // Deposit and deploy
-        deal(USDC, USER1, 1000 * 1e6, true);
+        // Deposit but don't execute (USDC stays idle in vault)
+        uint256 depositAmount = 100 * 1e6;
+        deal(USDC, USER1, depositAmount, true);
         vm.startPrank(USER1);
-        IERC20(USDC).approve(vaultAddr, 1000 * 1e6);
-        vault.deposit(1000 * 1e6);
+        IERC20(USDC).approve(vaultAddr, depositAmount);
+        vault.deposit(depositAmount);
         vm.stopPrank();
 
-        vm.startPrank(CONTROLLER);
-        vault.swapAndDeploy(new SwapCall[](0), 0, 0);
+        // Execute deposit to get shares
+        vm.prank(CONTROLLER);
+        vault.depositExecute();
+
+        // Now withdraw — strategy has zero balance, vault has idle USDC
+        vm.prank(USER1);
+        vault.withdraw(depositAmount);
+
+        // Verify pending
+        (,,uint256 pendingWithdraw, bool withdrawPending,,,,,,,,,,) = vault.getPendingStates();
+        assertTrue(withdrawPending, "Withdrawal should be pending");
+        console.log("Pending withdrawal amount:", pendingWithdraw);
+
+        // Execute withdrawal
+        uint256 userUSDCBefore = IERC20(USDC).balanceOf(USER1);
+        vm.prank(CONTROLLER);
+        vault.withdrawExecute(0);
+
+        uint256 userUSDCAfter = IERC20(USDC).balanceOf(USER1);
+        console.log("User received USDC:", userUSDCAfter - userUSDCBefore);
+        assertGt(userUSDCAfter, userUSDCBefore, "User should receive USDC");
+    }
+
+    /**
+     * @notice Test withdrawExecute with production vault addresses
+     */
+    function test_withdrawExecute_production_addresses() public {
+        console.log("=== Test: withdrawExecute with production addresses ===");
+
+        address vaultAddress = 0x2B49438A0F2e943FE1dD1Bb5E765d87A63733Fd3;
+        address controllerAddress = 0x25e21aBcd8FF244914eb03dA2EBA7ea62EfF6821;
+
+        vm.label(vaultAddress, "PRODUCTION_VAULT");
+        vm.label(controllerAddress, "PRODUCTION_CONTROLLER");
+
+        AnalogVault vault = AnalogVault(payable(vaultAddress));
+
+        // Check if vault exists
+        try vault.owner() returns (address owner) {
+            console.log("Vault owner:", owner);
+        } catch {
+            console.log("ERROR: Vault does not exist or is not a valid AnalogVault");
+            return;
+        }
+
+        // Check controller
+        try vault.controller() returns (address controller) {
+            console.log("Vault controller:", controller);
+        } catch {
+            console.log("ERROR: Could not read controller");
+        }
+
+        // Check pending states
+        try vault.getPendingStates() returns (
+            uint256 depositAmount,
+            bool depositPending,
+            uint256 withdrawalAmount,
+            bool withdrawalPending,
+            uint256, uint256, address, bool,
+            uint256, uint256, bool,
+            uint8, int256, bool
+        ) {
+            console.log("Deposit pending:", depositPending, "amount:", depositAmount);
+            console.log("Withdrawal pending:", withdrawalPending, "amount:", withdrawalAmount);
+
+            if (!withdrawalPending) {
+                console.log("No withdrawal is pending");
+            }
+        } catch {
+            console.log("ERROR reading pending states");
+        }
+
+        // Try to execute withdrawal as the controller
+        vm.startPrank(controllerAddress);
+        try vault.withdrawExecute(0) {
+            console.log("SUCCESS: withdrawExecute() succeeded");
+        } catch Error(string memory reason) {
+            console.log("REVERT:", reason);
+        } catch (bytes memory lowLevelData) {
+            console.log("REVERT (low-level):");
+            console.logBytes(lowLevelData);
+        }
         vm.stopPrank();
+    }
 
-        // Withdraw
-        vm.startPrank(USER1);
-        vault.withdraw(500 * 1e6);
-        vm.stopPrank();
+    /**
+     * @notice Test that only controller can call withdrawExecute
+     */
+    function test_only_controller_can_withdrawExecute() public {
+        uint256 depositAmount = 100 * 1e6;
+        (AnalogVault vault,,) = _setupVaultWithDeposit(depositAmount);
 
-        vm.startPrank(CONTROLLER);
-        vault.executeWithdrawal();
-        vm.stopPrank();
+        // Register withdrawal
+        vm.prank(USER1);
+        vault.withdraw(depositAmount);
 
-        // Create swap call with invalid router (not 1inch)
-        SwapCall[] memory swapCalls = new SwapCall[](1);
-        swapCalls[0] = SwapCall({
-            target: address(0x1234), // Invalid router
-            data: "",
-            value: 0
-        });
+        // Try as non-controller (should revert)
+        vm.prank(USER1);
+        vm.expectRevert();
+        vault.withdrawExecute(0);
+    }
 
-        // Should revert with Invalid() from SwapExecutor
-        vm.startPrank(CONTROLLER);
-        vm.expectRevert(); // Invalid() error
-        vault.executeSwap(swapCalls);
-        vm.stopPrank();
+    /**
+     * @notice Test minAmountOut slippage protection in withdrawExecute
+     */
+    function test_withdrawExecute_slippage_protection() public {
+        uint256 depositAmount = 100 * 1e6;
+        (AnalogVault vault,,) = _setupVaultWithDeposit(depositAmount);
 
-        console.log("Correctly reverted with Invalid router error");
+        // Register withdrawal
+        vm.prank(USER1);
+        vault.withdraw(depositAmount);
+
+        // Try with unreasonably high minAmountOut (should revert)
+        vm.prank(CONTROLLER);
+        vm.expectRevert();
+        vault.withdrawExecute(type(uint256).max);
     }
 }

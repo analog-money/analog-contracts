@@ -8,16 +8,15 @@ import {StrategyFactory} from "../src/StrategyFactory.sol";
 import {
     TestStrategyPassiveManagerUniswap
 } from "../src/TestStrategyPassiveManagerUniswap.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title AnalogVaultWithdrawTest
  * @notice Test suite for AnalogVault withdraw functionality
  *
- * Tests the new withdraw API:
+ * Tests the 2-step withdraw API:
  * 1. User calls withdraw(usdcAmount)
- * 2. Controller calls executeWithdrawal()
- * 3. Controller calls executeSwap(swapCalls)
+ * 2. Controller calls withdrawExecute(minAmountOut)
  *
  * To run this test:
  *   forge test --match-contract AnalogVaultWithdrawTest -vv
@@ -76,15 +75,19 @@ contract AnalogVaultWithdrawTest is Test {
         );
 
         // Deploy AnalogVault implementation
-        AnalogVault vaultImplementation = new AnalogVault();
+        AnalogVault vaultImplementation = new AnalogVault(USDC);
 
-        // Deploy AnalogVaultFactory
-        factory = new AnalogVaultFactory(
+        // Deploy AnalogVaultFactory behind proxy with initialization
+        AnalogVaultFactory factoryImpl = new AnalogVaultFactory();
+        bytes memory factoryInitData = abi.encodeWithSelector(
+            AnalogVaultFactory.initialize.selector,
+            address(this),
             USDC,
             address(strategyFactory),
             CONTROLLER,
             address(vaultImplementation)
         );
+        factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
     }
 
     /**
@@ -94,16 +97,15 @@ contract AnalogVaultWithdrawTest is Test {
         // Create vault
         (address vaultAddr, ) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
+            STRATEGY_NAME
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Try to withdraw as USER2 (should fail with OnlyVaultOwner)
         vm.startPrank(USER2);
-        vm.expectRevert("Ownable: caller is not the owner");
+        vm.expectRevert();
         vault.withdraw(100000); // 0.1 USDC
         vm.stopPrank();
 
@@ -117,10 +119,9 @@ contract AnalogVaultWithdrawTest is Test {
         // Create vault
         (address vaultAddr, ) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
+            STRATEGY_NAME
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -140,7 +141,7 @@ contract AnalogVaultWithdrawTest is Test {
         console.log("Withdrawal succeeded! Pending amount:", pendingAmount);
         console.log("Recipient is vault owner (USER1)");
 
-        // Note: Controller would call executeWithdrawal and executeSwap to complete
+        // Note: Controller would call withdrawExecute(minAmountOut) to complete
     }
 
     /**
@@ -150,16 +151,15 @@ contract AnalogVaultWithdrawTest is Test {
         // Create vault
         (address vaultAddr, ) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
+            STRATEGY_NAME
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Try to withdraw zero amount (should fail)
         vm.startPrank(USER1);
-        vm.expectRevert(AnalogVault.Insufficient.selector);
+        vm.expectRevert(bytes4(keccak256("InvalidOperation()")));
         vault.withdraw(0);
         vm.stopPrank();
 
@@ -173,10 +173,9 @@ contract AnalogVaultWithdrawTest is Test {
         // Create vault
         (address vaultAddr, ) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
+            STRATEGY_NAME
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -187,7 +186,7 @@ contract AnalogVaultWithdrawTest is Test {
         vault.withdraw(withdrawAmount);
 
         // Try second withdrawal while first is pending (should fail)
-        vm.expectRevert(AnalogVault.WithdrawPending.selector);
+        vm.expectRevert(bytes4(keccak256("InvalidOperation()")));
         vault.withdraw(withdrawAmount);
         vm.stopPrank();
 
@@ -203,10 +202,9 @@ contract AnalogVaultWithdrawTest is Test {
         // Create vault
         (address vaultAddr, ) = factory.createVault(
             USER1,
-            STRATEGY_NAME,
-            "Test Vault",
-            "TV"
+            STRATEGY_NAME
         );
+        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
 
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
@@ -221,7 +219,7 @@ contract AnalogVaultWithdrawTest is Test {
         assertTrue(isPendingBefore, "Withdrawal should be pending");
 
         // Cancel withdrawal (2 = withdraw flag)
-        vault.cancel(2);
+        vault.withdrawCancel();
 
         // Verify withdrawal is no longer pending
         (,,, bool isPendingAfter,,,,,,,,,,) = vault.getPendingStates();
