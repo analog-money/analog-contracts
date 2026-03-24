@@ -379,7 +379,7 @@ contract AnalogVaultDepositForkTest is Test {
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Fund USER1 with USDC (USER1 IS the vault owner)
-        uint256 depositAmount = 100000; // 0.1 USDC
+        uint256 depositAmount = 100 * 10 ** 6; // 100 USDC (>= minDeposit of 10 USDC)
         deal(USDC, USER1, depositAmount, true);
 
         // Deposit as USER1 (should succeed)

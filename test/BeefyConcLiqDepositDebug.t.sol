@@ -70,6 +70,15 @@ interface IBeefyVault {
             uint256 fee1
         );
     function isCalm() external view returns (bool);
+    function strategy() external view returns (address);
+}
+
+interface IStrategyOwner {
+    function owner() external view returns (address);
+}
+
+interface IStrategyDeviation {
+    function setDeviation(int56 _maxDeviation) external;
 }
 
 contract BeefyConcLiqDepositDebugTest is Test {
@@ -119,6 +128,14 @@ contract BeefyConcLiqDepositDebugTest is Test {
 
         // Give user some ETH for gas
         vm.deal(USER, 10 ether);
+
+        // Settle TWAP oracle: widen deviation on strategy and mine blocks
+        address strategyAddr = vault.strategy();
+        address stratOwner = IStrategyOwner(strategyAddr).owner();
+        vm.prank(stratOwner);
+        IStrategyDeviation(strategyAddr).setDeviation(int56(39));
+        vm.roll(block.number + 600);
+        vm.warp(block.timestamp + 600 * 2);
     }
 
     function test_beefy_concliq_deposit() public {

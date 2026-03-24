@@ -40,8 +40,17 @@ interface IUniswapV3Pool {
         );
 }
 
+interface IStrategyOwner {
+    function owner() external view returns (address);
+}
+
+interface IStrategyDeviation {
+    function setDeviation(int56 _maxDeviation) external;
+}
+
 interface IBeefyVault {
     function want() external view returns (address);
+    function strategy() external view returns (address);
     function deposit(
         uint256 amount0,
         uint256 amount1,
@@ -106,6 +115,14 @@ contract VaultDepositForkTest is Test {
 
         // Give user some ETH for gas
         vm.deal(USER_WALLET, 10 ether);
+
+        // Settle TWAP oracle: widen deviation on strategy and mine blocks
+        address strategyAddr = vault.strategy();
+        address stratOwner = IStrategyOwner(strategyAddr).owner();
+        vm.prank(stratOwner);
+        IStrategyDeviation(strategyAddr).setDeviation(int56(39));
+        vm.roll(block.number + 600);
+        vm.warp(block.timestamp + 600 * 2);
     }
 
     function test_vault_deposit_from_user_wallet() public {
