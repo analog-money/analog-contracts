@@ -19,7 +19,7 @@ contract AnalogVaultConfigChangesForkTest is Test {
 
     function setUp() public {
         // Fork Base mainnet
-        vm.createSelectFork("https://mainnet.base.org");
+        vm.createSelectFork("https://api.developer.coinbase.com/rpc/v1/base/SF6TF2InaVNiSGPhP3Up4b62uEhp1qme");
 
         vm.label(owner, "OWNER");
         vm.label(controller, "CONTROLLER");

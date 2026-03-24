@@ -22,7 +22,11 @@ contract AnalogVaultUpgradeAuthTest is Test {
     address owner;
 
     function setUp() public {
-        vm.createSelectFork(vm.envString("BASE_HTTP_RPC_URL"));
+        string memory rpcUrl = "https://api.developer.coinbase.com/rpc/v1/base/SF6TF2InaVNiSGPhP3Up4b62uEhp1qme";
+        try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
+            rpcUrl = url;
+        } catch {}
+        vm.createSelectFork(rpcUrl);
 
         factory = AnalogVaultFactory(FACTORY_ADDR);
         owner = factory.owner();

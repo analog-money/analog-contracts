@@ -5,10 +5,12 @@ import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
 import {AnalogVaultFactory} from "../src/AnalogVaultFactory.sol";
 import {StrategyFactory} from "../src/StrategyFactory.sol";
+import {StratFeeManagerInitializable} from "beefy-zk/strategies/StratFeeManagerInitializable.sol";
 import {
     TestStrategyPassiveManagerUniswap
 } from "../src/TestStrategyPassiveManagerUniswap.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title AnalogVaultWithdrawTest
@@ -26,6 +28,9 @@ contract AnalogVaultWithdrawTest is Test {
     address constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
     address constant WETH = 0x4200000000000000000000000000000000000006;
     address constant POOL = 0xd0b53D9277642d899DF5C87A3966A349A798F224; // USDC-WETH pool
+    address constant QUOTER = 0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a;
+    address constant UNIROUTER = 0x2626664c2603336E57B271c5C0b26F421741e481;
+    address constant STRATEGIST = address(0x5555555555555555555555555555555555555555);
 
     // Test addresses
     address constant CONTROLLER =
@@ -43,7 +48,7 @@ contract AnalogVaultWithdrawTest is Test {
 
     function setUp() public {
         // Fork Base mainnet
-        string memory rpcUrl = "https://mainnet.base.org";
+        string memory rpcUrl = "https://api.developer.coinbase.com/rpc/v1/base/SF6TF2InaVNiSGPhP3Up4b62uEhp1qme";
         try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
             rpcUrl = url;
         } catch {}
@@ -90,17 +95,51 @@ contract AnalogVaultWithdrawTest is Test {
         factory = AnalogVaultFactory(address(new ERC1967Proxy(address(factoryImpl), factoryInitData)));
     }
 
+    function initializeStrategy(address strategy, address vault) internal {
+        StratFeeManagerInitializable.CommonAddresses
+            memory commonAddresses = StratFeeManagerInitializable
+                .CommonAddresses({
+                    vault: vault,
+                    unirouter: UNIROUTER,
+                    strategist: STRATEGIST,
+                    factory: address(strategyFactory)
+                });
+
+        int24 positionWidth = 10;
+
+        // WETH is token0 (= native), so empty path. USDC is token1, swap via 500bps pool to WETH.
+        bytes memory lpToken0ToNativePath = "";
+        bytes memory lpToken1ToNativePath = abi.encodePacked(
+            USDC,
+            uint24(500),
+            WETH
+        );
+
+        TestStrategyPassiveManagerUniswap(strategy).initialize(
+            POOL,
+            QUOTER,
+            positionWidth,
+            lpToken0ToNativePath,
+            lpToken1ToNativePath,
+            commonAddresses
+        );
+    }
+
+    function createVaultForUser(address user) internal returns (address vaultAddr, address strategyAddr) {
+        (vaultAddr, strategyAddr) = factory.createVault(user, STRATEGY_NAME);
+        initializeStrategy(strategyAddr, vaultAddr);
+        // Widen deviation tolerance and mine blocks to settle TWAP oracle
+        TestStrategyPassiveManagerUniswap(strategyAddr).setDeviation(int56(39));
+        vm.roll(block.number + 600);
+        vm.warp(block.timestamp + 600 * 2);
+        AnalogVault(payable(vaultAddr)).transferOwnership(user);
+    }
+
     /**
      * @notice Test withdraw with wrong user (not vault owner)
      */
     function test_withdraw_wrong_user() public {
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
-
+        (address vaultAddr, ) = createVaultForUser(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Try to withdraw as USER2 (should fail with OnlyVaultOwner)
@@ -108,26 +147,29 @@ contract AnalogVaultWithdrawTest is Test {
         vm.expectRevert();
         vault.withdraw(100000); // 0.1 USDC
         vm.stopPrank();
-
-        console.log("Correctly reverted with OnlyVaultOwner error");
     }
 
     /**
      * @notice Test withdraw with correct user (vault owner)
      */
     function test_withdraw_correct_user() public {
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
-
+        (address vaultAddr, ) = createVaultForUser(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
-        uint256 withdrawAmount = 100000; // 0.1 USDC
+        // First deposit so vault has equity
+        uint256 depositAmount = 100 * 10 ** 6; // 100 USDC
+        deal(USDC, USER1, depositAmount, true);
+        vm.startPrank(USER1);
+        IERC20(USDC).approve(vaultAddr, depositAmount);
+        vault.deposit(depositAmount);
 
-        // Withdraw as USER1 (should succeed)
+        // Execute deposit as controller to create shares
+        vm.stopPrank();
+        vm.prank(CONTROLLER);
+        vault.depositExecute();
+
+        // Now withdraw
+        uint256 withdrawAmount = 50 * 10 ** 6; // 50 USDC
         vm.startPrank(USER1);
         vault.withdraw(withdrawAmount);
         vm.stopPrank();
@@ -136,25 +178,13 @@ contract AnalogVaultWithdrawTest is Test {
         (,, uint256 pendingAmount, bool isPending,,,,,,,,,,) = vault.getPendingStates();
         assertTrue(isPending, "Withdrawal should be pending");
         assertEq(pendingAmount, withdrawAmount, "Pending amount should match");
-        // Recipient is always the vault owner (USER1)
-
-        console.log("Withdrawal succeeded! Pending amount:", pendingAmount);
-        console.log("Recipient is vault owner (USER1)");
-
-        // Note: Controller would call withdrawExecute(minAmountOut) to complete
     }
 
     /**
      * @notice Test withdraw with zero amount
      */
     function test_withdraw_zero_amount() public {
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
-
+        (address vaultAddr, ) = createVaultForUser(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
         // Try to withdraw zero amount (should fail)
@@ -162,24 +192,26 @@ contract AnalogVaultWithdrawTest is Test {
         vm.expectRevert(bytes4(keccak256("InvalidOperation()")));
         vault.withdraw(0);
         vm.stopPrank();
-
-        console.log("Correctly reverted with InsufficientBalance error");
     }
 
     /**
      * @notice Test double withdrawal (already pending)
      */
     function test_withdraw_already_pending() public {
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
-
+        (address vaultAddr, ) = createVaultForUser(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
-        uint256 withdrawAmount = 100000; // 0.1 USDC
+        // Deposit first
+        uint256 depositAmount = 100 * 10 ** 6;
+        deal(USDC, USER1, depositAmount, true);
+        vm.startPrank(USER1);
+        IERC20(USDC).approve(vaultAddr, depositAmount);
+        vault.deposit(depositAmount);
+        vm.stopPrank();
+        vm.prank(CONTROLLER);
+        vault.depositExecute();
+
+        uint256 withdrawAmount = 50 * 10 ** 6;
 
         // First withdrawal
         vm.startPrank(USER1);
@@ -189,26 +221,26 @@ contract AnalogVaultWithdrawTest is Test {
         vm.expectRevert(bytes4(keccak256("InvalidOperation()")));
         vault.withdraw(withdrawAmount);
         vm.stopPrank();
-
-        console.log(
-            "Correctly reverted with WithdrawalAlreadyPending error"
-        );
     }
 
     /**
      * @notice Test cancel withdrawal
      */
     function test_cancel_withdrawal() public {
-        // Create vault
-        (address vaultAddr, ) = factory.createVault(
-            USER1,
-            STRATEGY_NAME
-        );
-        AnalogVault(payable(vaultAddr)).transferOwnership(USER1);
-
+        (address vaultAddr, ) = createVaultForUser(USER1);
         AnalogVault vault = AnalogVault(payable(vaultAddr));
 
-        uint256 withdrawAmount = 100000; // 0.1 USDC
+        // Deposit first
+        uint256 depositAmount = 100 * 10 ** 6;
+        deal(USDC, USER1, depositAmount, true);
+        vm.startPrank(USER1);
+        IERC20(USDC).approve(vaultAddr, depositAmount);
+        vault.deposit(depositAmount);
+        vm.stopPrank();
+        vm.prank(CONTROLLER);
+        vault.depositExecute();
+
+        uint256 withdrawAmount = 50 * 10 ** 6;
 
         // Register withdrawal
         vm.startPrank(USER1);

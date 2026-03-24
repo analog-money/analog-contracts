@@ -34,7 +34,7 @@ contract StrategyInitForkTest is Test {
     address deployer = address(0xdeadbeef);
 
     function setUp() public {
-        string memory rpcUrl = "https://mainnet.base.org";
+        string memory rpcUrl = "https://api.developer.coinbase.com/rpc/v1/base/SF6TF2InaVNiSGPhP3Up4b62uEhp1qme";
         try vm.envString("BASE_HTTP_RPC_URL") returns (string memory url) {
             rpcUrl = url;
         } catch {}
