@@ -14,16 +14,6 @@ interface IStrategyMoveTicks {
 
 interface IAnalogVaultFactory {
     function latestImplementation() external view returns (address);
-    function strategyFactory() external view returns (address);
-}
-
-interface IStrategyFactory {
-    function getImplementation(string calldata name) external view returns (address);
-}
-
-interface IUUPS {
-    function upgradeToLatest() external;
-    function getImplementation() external view returns (address);
 }
 
 interface IStrategyConfig {
@@ -311,12 +301,5 @@ contract AnalogVault is BaseVault {
         _authorizeUpgrade(latestVault);
         _upgradeToAndCall(latestVault, new bytes(0), false);
     }
-    try fact.strategyFactory() returns (address stratFactory) {
-        if (stratFactory != address(0)) {
-            try IStrategyFactory(stratFactory).getImplementation("StrategyPassiveManagerUniswap") returns (address) {
-                try IUUPS(address(strategy)).upgradeToLatest() {} catch {}
-            } catch {}
-        }
-    } catch {}
   }
 }
