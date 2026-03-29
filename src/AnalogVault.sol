@@ -8,10 +8,6 @@ import {BaseVault} from "./BaseVault.sol";
 import {IStrategyConcLiq} from "beefy-zk/interfaces/beefy/IStrategyConcLiq.sol";
 import {PoolSwapExecutor} from "./libraries/PoolSwapExecutor.sol";
 
-interface IStrategyMoveTicks {
-  function moveTicks() external;
-}
-
 interface IAnalogVaultFactory {
     function latestImplementation() external view returns (address);
 }
@@ -160,15 +156,10 @@ contract AnalogVault is BaseVault {
     return strategy.lpToken0() == USDC ? bal1 : bal0;
   }
 
-  function _rebalanceAMM() internal override {
-    (uint256 bal0, uint256 bal1) = strategy.balances();
-    if (bal0 == 0 && bal1 == 0) return;
-
-    // moveTicks() handles the full cycle: claim fees → remove liquidity →
-    // recalculate ticks → re-add liquidity. Includes its own NotCalm guard.
-    // No try/catch — let reverts propagate so callers know when it fails.
-    IStrategyMoveTicks(address(strategy)).moveTicks();
-  }
+  /// @dev Deprecated — controller now calls strategy.moveTicks() directly,
+  /// bypassing the vault. Kept as empty override to satisfy BaseVault interface.
+  /// Will be removed in next vault implementation upgrade.
+  function _rebalanceAMM() internal override {}
 
   function _harvestFees() internal override returns (uint256 fees0, uint256 fees1) {
     strategy.beforeAction();
