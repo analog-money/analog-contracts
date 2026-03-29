@@ -24,6 +24,8 @@ contract AnalogVaultConfigChangesTest is Test {
     // Events to test
     event ConfigQueued(uint8 indexed changeType, int256 value);
     event ConfigExec(uint8 indexed changeType, int256 value);
+    event BatchConfigQueued(uint8 flags, int24 positionWidth, int56 deviation, uint32 twapInterval);
+    event BatchConfigExec(uint8 flags, int24 positionWidth, int56 deviation, uint32 twapInterval);
 
     function setUp() public {
         // Fork Base mainnet for initialization to work
@@ -155,5 +157,120 @@ contract AnalogVaultConfigChangesTest is Test {
         assertEq(changeType, 0, "Should be 0 (None)");
         assertEq(value, 0, "Value should be 0");
         assertFalse(isPending, "Should not be pending");
+    }
+
+    // ─── BATCH CONFIG TESTS ──────────────────────────────────────────────
+
+    /**
+     * Test 10: Queue batch config change with all 3 params
+     */
+    function test_queueBatchAllParams() public {
+        int24 width = int24(60);
+        int56 dev = int56(150);
+        uint32 twap = uint32(600);
+
+        vm.expectEmit(true, true, true, true);
+        emit BatchConfigQueued(7, width, dev, twap); // flags = 1|2|4 = 7
+
+        vault.queueBatchConfigChange(width, true, dev, true, twap, true);
+
+        (int24 pw, bool hw, int56 d, bool hd, uint32 ti, bool ht) = vault.pendingBatch();
+        assertEq(pw, width);
+        assertTrue(hw);
+        assertEq(d, dev);
+        assertTrue(hd);
+        assertEq(ti, twap);
+        assertTrue(ht);
+    }
+
+    /**
+     * Test 11: Queue batch with only 2 params (width + twap)
+     */
+    function test_queueBatchPartial() public {
+        vault.queueBatchConfigChange(int24(40), true, int56(0), false, uint32(300), true);
+
+        (int24 pw, bool hw, , bool hd, uint32 ti, bool ht) = vault.pendingBatch();
+        assertEq(pw, int24(40));
+        assertTrue(hw);
+        assertFalse(hd);
+        assertEq(ti, uint32(300));
+        assertTrue(ht);
+    }
+
+    /**
+     * Test 12: Cannot queue batch if single config is pending
+     */
+    function test_cannotQueueBatchIfSinglePending() public {
+        vault.queueConfigChange(1, int256(int256(int24(50))));
+
+        vm.expectRevert(AnalogVault.ConfigPending.selector);
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+    }
+
+    /**
+     * Test 13: Cannot queue single if batch is pending
+     */
+    function test_cannotQueueSingleIfBatchPending() public {
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+
+        vm.expectRevert(AnalogVault.ConfigPending.selector);
+        vault.queueConfigChange(1, int256(int256(int24(50))));
+    }
+
+    /**
+     * Test 14: Cannot queue batch if batch already pending
+     */
+    function test_cannotQueueBatchIfBatchPending() public {
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+
+        vm.expectRevert(AnalogVault.ConfigPending.selector);
+        vault.queueBatchConfigChange(int24(70), true, int56(0), false, uint32(0), false);
+    }
+
+    /**
+     * Test 15: Batch with no flags reverts
+     */
+    function test_cannotQueueEmptyBatch() public {
+        vm.expectRevert(AnalogVault.InvalidConfig.selector);
+        vault.queueBatchConfigChange(int24(0), false, int56(0), false, uint32(0), false);
+    }
+
+    /**
+     * Test 16: Non-owner cannot queue batch
+     */
+    function test_nonOwnerCannotQueueBatch() public {
+        vm.prank(nonOwner);
+        vm.expectRevert("Ownable: caller is not the owner");
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+    }
+
+    /**
+     * Test 17: Non-controller cannot execute batch
+     */
+    function test_nonControllerCannotExecuteBatch() public {
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+
+        vm.prank(nonOwner);
+        vm.expectRevert(); // OnlyController
+        vault.executeBatchConfigChange();
+    }
+
+    /**
+     * Test 18: Cannot execute batch if nothing pending
+     */
+    function test_cannotExecuteBatchIfNothingPending() public {
+        vm.prank(CONTROLLER);
+        vm.expectRevert(AnalogVault.NoConfig.selector);
+        vault.executeBatchConfigChange();
+    }
+
+    /**
+     * Test 19: getPendingStates reports configPending=true for batch
+     */
+    function test_getPendingStatesReportsBatchPending() public {
+        vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+
+        (,,,,,,,,,,, , , bool configPending) = vault.getPendingStates();
+        assertTrue(configPending, "getPendingStates should report batch as pending");
     }
 }

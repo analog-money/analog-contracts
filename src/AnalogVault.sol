@@ -44,6 +44,17 @@ contract AnalogVault is BaseVault {
   }
   PendingConfig public pendingConfig;
 
+  // === BATCH CONFIG STATE (appended for UUPS storage safety) ===
+  struct PendingBatchConfig {
+    int24 positionWidth;
+    bool hasPositionWidth;
+    int56 deviation;
+    bool hasDeviation;
+    uint32 twapInterval;
+    bool hasTwapInterval;
+  }
+  PendingBatchConfig public pendingBatch;
+
   // === ERRORS ===
   error InvalidStrategy();
   error InvalidConfig();
@@ -54,6 +65,8 @@ contract AnalogVault is BaseVault {
   // === EVENTS ===
   event ConfigQueued(uint8 indexed changeType, int256 value);
   event ConfigExec(uint8 indexed changeType, int256 value);
+  event BatchConfigQueued(uint8 flags, int24 positionWidth, int56 deviation, uint32 twapInterval);
+  event BatchConfigExec(uint8 flags, int24 positionWidth, int56 deviation, uint32 twapInterval);
   event WithdrawFromAMMFailed();
 
   // === CONSTRUCTOR ===
@@ -231,14 +244,17 @@ contract AnalogVault is BaseVault {
     withdrawalPending = (pending.flags & 0x02) != 0;
     configType = pendingConfig.changeType;
     configValue = pendingConfig.value;
-    configPending = pendingConfig.isPending;
+    configPending = pendingConfig.isPending
+      || pendingBatch.hasPositionWidth
+      || pendingBatch.hasDeviation
+      || pendingBatch.hasTwapInterval;
   }
 
   // === CONFIGURATION MANAGEMENT ===
 
   function queueConfigChange(uint8 changeType, int256 value) external onlyOwner {
     if (changeType == 0) revert InvalidConfig();
-    if (pendingConfig.isPending) revert ConfigPending();
+    if (pendingConfig.isPending || _hasBatchPending()) revert ConfigPending();
     pendingConfig = PendingConfig(changeType, value, true);
     emit ConfigQueued(changeType, value);
   }
@@ -261,6 +277,40 @@ contract AnalogVault is BaseVault {
       cfg.setTwapInterval(uint32(uint256(val)));
     }
     emit ConfigExec(typ, val);
+  }
+
+  // === BATCH CONFIGURATION MANAGEMENT ===
+
+  function _hasBatchPending() internal view returns (bool) {
+    return pendingBatch.hasPositionWidth || pendingBatch.hasDeviation || pendingBatch.hasTwapInterval;
+  }
+
+  /// @notice Queue multiple config changes in a single call
+  function queueBatchConfigChange(
+    int24 positionWidth, bool setWidth,
+    int56 deviation, bool setDev,
+    uint32 twapInterval, bool setTwap
+  ) external onlyOwner {
+    if (!setWidth && !setDev && !setTwap) revert InvalidConfig();
+    if (pendingConfig.isPending || _hasBatchPending()) revert ConfigPending();
+    pendingBatch = PendingBatchConfig(positionWidth, setWidth, deviation, setDev, twapInterval, setTwap);
+    uint8 flags = (setWidth ? 1 : 0) | (setDev ? 2 : 0) | (setTwap ? 4 : 0);
+    emit BatchConfigQueued(flags, positionWidth, deviation, twapInterval);
+  }
+
+  /// @notice Execute all pending batch config changes
+  function executeBatchConfigChange() external onlyController {
+    PendingBatchConfig memory b = pendingBatch;
+    if (!b.hasPositionWidth && !b.hasDeviation && !b.hasTwapInterval) revert NoConfig();
+    if (b.hasPositionWidth && !strategy.isCalm()) revert NotCalm();
+    delete pendingBatch;
+    IStrategyConfig cfg = IStrategyConfig(address(strategy));
+    // Execute twap & deviation first — they configure the calm check itself
+    if (b.hasTwapInterval) cfg.setTwapInterval(b.twapInterval);
+    if (b.hasDeviation) cfg.setDeviation(b.deviation);
+    if (b.hasPositionWidth) cfg.setPositionWidth(b.positionWidth);
+    uint8 flags = (b.hasPositionWidth ? 1 : 0) | (b.hasDeviation ? 2 : 0) | (b.hasTwapInterval ? 4 : 0);
+    emit BatchConfigExec(flags, b.positionWidth, b.deviation, b.twapInterval);
   }
 
   // === STRATEGY ADMIN (owner-only) ===
