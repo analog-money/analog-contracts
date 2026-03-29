@@ -166,7 +166,8 @@ contract AnalogVault is BaseVault {
 
     // moveTicks() handles the full cycle: claim fees → remove liquidity →
     // recalculate ticks → re-add liquidity. Includes its own NotCalm guard.
-    try IStrategyMoveTicks(address(strategy)).moveTicks() {} catch {}
+    // No try/catch — let reverts propagate so callers know when it fails.
+    IStrategyMoveTicks(address(strategy)).moveTicks();
   }
 
   function _harvestFees() internal override returns (uint256 fees0, uint256 fees1) {
