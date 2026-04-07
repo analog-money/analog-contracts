@@ -57,7 +57,6 @@ contract AnalogVault is BaseVault {
 
   // === ERRORS ===
   error InvalidStrategy();
-  error InvalidConfig();
   error ConfigPending();
   error NoConfig();
   error NotAuthorized();
@@ -313,18 +312,10 @@ contract AnalogVault is BaseVault {
     emit BatchConfigExec(flags, b.positionWidth, b.deviation, b.twapInterval);
   }
 
-  // === CONTROLLER WIDTH MANAGEMENT (ADR-019: Dynamic Ranges) ===
+  // === ABSTRACT IMPL ===
 
-  /// @notice Controller sets position width on the strategy.
-  /// Used for dynamic ranges — controller picks width based on off-chain
-  /// volatility regime and the user's per-regime config (configJson).
-  /// The Beefy strategy's setPositionWidth does a full rebalance internally
-  /// (remove liquidity → update width → recalculate ticks → add liquidity),
-  /// so this REPLACES moveTicks() — do not call both.
-  /// Only call when position is already OOR and about to rebalance anyway.
-  function setStrategyPositionWidth(int24 _width) external onlyController {
-    if (_width <= 0 || _width > 500) revert InvalidConfig();
-    IStrategyConfig(address(strategy)).setPositionWidth(_width);
+  function _strategyAddress() internal view override returns (address) {
+    return address(strategy);
   }
 
   // === STRATEGY ADMIN (owner-only) ===

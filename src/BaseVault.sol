@@ -340,7 +340,24 @@ abstract contract BaseVault is
     return paused();
   }
 
+  // === CONTROLLER: DYNAMIC WIDTH ===
+
+  /// @notice Controller sets position width on the strategy (ADR-019 dynamic ranges).
+  /// @dev Beefy's setPositionWidth does a full rebalance internally
+  ///      (remove liquidity → update width → recalculate ticks → add liquidity),
+  ///      so this REPLACES moveTicks() — do not call both.
+  function setStrategyPositionWidth(int24 _width) external onlyController {
+    if (_width <= 0 || _width > 500) revert InvalidConfig();
+    (bool ok, ) = _strategyAddress().call(
+      abi.encodeWithSignature("setPositionWidth(int24)", _width)
+    );
+    require(ok, "setPositionWidth failed");
+  }
+
   // === ABSTRACT ===
+
+  /// @notice Return the strategy contract address (implemented by each vault type).
+  function _strategyAddress() internal view virtual returns (address);
 
   function getVaultEquity() public view virtual returns (uint256);
   function balances() external view virtual returns (uint256 amount0, uint256 amount1);

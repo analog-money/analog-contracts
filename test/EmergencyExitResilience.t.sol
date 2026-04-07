@@ -81,6 +81,10 @@ contract MockVault is BaseVault {
     function _getUnclaimedFees() internal pure override returns (uint256) {
         return 0;
     }
+
+    function _strategyAddress() internal pure override returns (address) {
+        return address(0);
+    }
 }
 
 /**

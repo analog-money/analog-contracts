@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import "forge-std/Test.sol";
 import {AnalogVault} from "../src/AnalogVault.sol";
+import {IHedgedVault} from "../src/interfaces/IHedgedVault.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -145,7 +146,7 @@ contract AnalogVaultConfigChangesTest is Test {
      * Test 8: Invalid changeType (0) reverts
      */
     function test_cannotQueueInvalidChangeType() public {
-        vm.expectRevert(AnalogVault.InvalidConfig.selector);
+        vm.expectRevert(IHedgedVault.InvalidConfig.selector);
         vault.queueConfigChange(0, int256(100));
     }
 
@@ -231,7 +232,7 @@ contract AnalogVaultConfigChangesTest is Test {
      * Test 15: Batch with no flags reverts
      */
     function test_cannotQueueEmptyBatch() public {
-        vm.expectRevert(AnalogVault.InvalidConfig.selector);
+        vm.expectRevert(IHedgedVault.InvalidConfig.selector);
         vault.queueBatchConfigChange(int24(0), false, int56(0), false, uint32(0), false);
     }
 

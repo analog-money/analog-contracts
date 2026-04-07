@@ -79,6 +79,7 @@ interface IHedgedVault {
   error SlippageExceeded();
   error NotCalm();
   error OnlySelf();
+  error InvalidConfig();
 
   // === USER FUNCTIONS ===
 

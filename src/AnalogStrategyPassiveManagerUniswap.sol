@@ -10,12 +10,9 @@ import {LiquidityAmounts} from "beefy-zk/utils/LiquidityAmounts.sol";
 import {TickMath} from "beefy-zk/utils/TickMath.sol";
 import {TickUtils, FullMath} from "beefy-zk/utils/TickUtils.sol";
 import {UniV3Utils} from "beefy-zk/utils/UniV3Utils.sol";
-import {IBeefyVaultConcLiq} from "beefy-zk/interfaces/beefy/IBeefyVaultConcLiq.sol";
 import {IStrategyFactory} from "beefy-zk/interfaces/beefy/IStrategyFactory.sol";
 import {IStrategyConcLiq} from "beefy-zk/interfaces/beefy/IStrategyConcLiq.sol";
-import {IStrategyUniswapV3} from "beefy-zk/interfaces/beefy/IStrategyUniswapV3.sol";
 import {IBeefySwapper} from "beefy-zk/interfaces/beefy/IBeefySwapper.sol";
-import {IQuoter} from "beefy-zk/interfaces/uniswap/IQuoter.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface IAnalogStrategyFactory {
@@ -29,7 +26,7 @@ interface IAnalogStrategyFactory {
 ///      1. moveTicks() gated by onlyOwner (owner = vault) so rebalance is routed
 ///         through vault.rebalanceAMM().
 ///      2. UUPS upgradeability via factory-signaled implementations.
-contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IStrategyConcLiq, IStrategyUniswapV3, UUPSUpgradeable {
+contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IStrategyConcLiq, UUPSUpgradeable {
     using SafeERC20 for IERC20Metadata;
     using TickMath for int24;
 
@@ -197,7 +194,7 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
 
         if (liquidity > 0 && amountsOk) {
             minting = true;
-            IUniswapV3Pool(pool).mint(address(this), positionMain.tickLower, positionMain.tickUpper, liquidity, "Beefy Main");
+            IUniswapV3Pool(pool).mint(address(this), positionMain.tickLower, positionMain.tickUpper, liquidity, "");
         } else _onlyCalmPeriods();
 
         (bal0, bal1) = balancesOfThis();
@@ -212,7 +209,7 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
 
         if (liquidity > 0) {
             minting = true;
-            IUniswapV3Pool(pool).mint(address(this), positionAlt.tickLower, positionAlt.tickUpper, liquidity, "Beefy Alt");
+            IUniswapV3Pool(pool).mint(address(this), positionAlt.tickLower, positionAlt.tickUpper, liquidity, "");
         }
     }
 
@@ -284,10 +281,6 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
 
         (uint256 bal0, uint256 bal1) = balances();
         emit TVL(bal0, bal1);
-    }
-
-    function claimEarnings() external returns (uint256 fee0, uint256 fee1, uint256 feeAlt0, uint256 feeAlt1) {
-        (fee0, fee1, feeAlt0, feeAlt1) = _claimEarnings();
     }
 
     function _claimEarnings() private returns (uint256 fee0, uint256 fee1, uint256 feeAlt0, uint256 feeAlt1) {
@@ -411,11 +404,6 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
         else locked1 = totalBal1 * remaining / DURATION;
     }
 
-    function range() external view returns (uint256 lowerPrice, uint256 upperPrice) {
-        lowerPrice = FullMath.mulDiv(uint256(TickMath.getSqrtRatioAtTick(positionMain.tickLower)), SQRT_PRECISION, (2 ** 96)) ** 2;
-        upperPrice = FullMath.mulDiv(uint256(TickMath.getSqrtRatioAtTick(positionMain.tickUpper)), SQRT_PRECISION, (2 ** 96)) ** 2;
-    }
-
     function getKeys() public view returns (bytes32 keyMain, bytes32 keyAlt) {
         keyMain = keccak256(abi.encodePacked(address(this), positionMain.tickLower, positionMain.tickUpper));
         keyAlt = keccak256(abi.encodePacked(address(this), positionAlt.tickLower, positionAlt.tickUpper));
@@ -434,7 +422,7 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
         (sqrtPriceX96,,,,,,) = IUniswapV3Pool(pool).slot0();
     }
 
-    function swapFee() external override view returns (uint256 fee) {
+    function swapFee() external view returns (uint256 fee) {
         fee = uint256(IUniswapV3Pool(pool).fee()) * SQRT_PRECISION / 1e6;
     }
 
@@ -536,28 +524,6 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
         maxTickDeviation = _maxDeviation;
     }
 
-    function lpToken0ToNative() external view returns (address[] memory) {
-        if (lpToken0ToNativePath.length == 0) return new address[](0);
-        return UniV3Utils.pathToRoute(lpToken0ToNativePath);
-    }
-
-    function lpToken1ToNative() external view returns (address[] memory) {
-        if (lpToken1ToNativePath.length == 0) return new address[](0);
-        return UniV3Utils.pathToRoute(lpToken1ToNativePath);
-    }
-
-    function lpToken0ToNativePrice() external returns (uint256) {
-        uint amount = 10**IERC20Metadata(lpToken0).decimals() / 10;
-        if (lpToken0 == native) return amount * 10;
-        return IQuoter(quoter).quoteExactInput(lpToken0ToNativePath, amount) * 10;
-    }
-
-    function lpToken1ToNativePrice() external returns (uint256) {
-        uint amount = 10**IERC20Metadata(lpToken1).decimals() / 10;
-        if (lpToken1 == native) return amount * 10;
-        return IQuoter(quoter).quoteExactInput(lpToken1ToNativePath, amount) * 10;
-    }
-
     function twap() public view returns (int56 twapTick) {
         uint32[] memory secondsAgo = new uint32[](2);
         secondsAgo[0] = uint32(twapInterval);
@@ -589,16 +555,6 @@ contract AnalogStrategyPassiveManagerUniswap is StratFeeManagerInitializable, IS
         unirouter = _unirouter;
         _giveAllowances();
         emit SetUnirouter(_unirouter);
-    }
-
-    function retireVault() external onlyOwner {
-        if (IBeefyVaultConcLiq(vault).totalSupply() != 10**3) revert NotAuthorized();
-        panic(0,0);
-        address feeRecipient = beefyFeeRecipient();
-        (uint bal0, uint bal1) = balancesOfThis();
-        if (bal0 > 0) IERC20Metadata(lpToken0).safeTransfer(feeRecipient, IERC20Metadata(lpToken0).balanceOf(address(this)));
-        if (bal1 > 0) IERC20Metadata(lpToken1).safeTransfer(feeRecipient, IERC20Metadata(lpToken1).balanceOf(address(this)));
-        _transferOwnership(address(0));
     }
 
     function panic(uint256 _minAmount0, uint256 _minAmount1) public onlyManager {
