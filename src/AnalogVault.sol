@@ -253,7 +253,8 @@ contract AnalogVault is BaseVault {
 
   function queueConfigChange(uint8 changeType, int256 value) external onlyOwner {
     if (changeType == 0) revert InvalidConfig();
-    if (pendingConfig.isPending || _hasBatchPending()) revert ConfigPending();
+    // Overwrite any existing pending config (single or batch)
+    delete pendingBatch;
     pendingConfig = PendingConfig(changeType, value, true);
     emit ConfigQueued(changeType, value);
   }
@@ -291,7 +292,8 @@ contract AnalogVault is BaseVault {
     uint32 twapInterval, bool setTwap
   ) external onlyOwner {
     if (!setWidth && !setDev && !setTwap) revert InvalidConfig();
-    if (pendingConfig.isPending || _hasBatchPending()) revert ConfigPending();
+    // Overwrite any existing pending config (single or batch)
+    delete pendingConfig;
     pendingBatch = PendingBatchConfig(positionWidth, setWidth, deviation, setDev, twapInterval, setTwap);
     uint8 flags = (setWidth ? 1 : 0) | (setDev ? 2 : 0) | (setTwap ? 4 : 0);
     emit BatchConfigQueued(flags, positionWidth, deviation, twapInterval);

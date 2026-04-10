@@ -104,13 +104,16 @@ contract AnalogVaultConfigChangesTest is Test {
     }
 
     /**
-     * Test 4: Cannot queue if change already pending
+     * Test 4: Queuing new single config overwrites existing single config
      */
-    function test_cannotQueueMultipleChanges() public {
+    function test_queueOverwritesSingleConfig() public {
         vault.queueConfigChange(1, int256(int256(int24(50))));
-
-        vm.expectRevert(AnalogVault.ConfigPending.selector);
         vault.queueConfigChange(2, int256(int56(200)));
+
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 2, "Should be overwritten to Deviation");
+        assertEq(value, int256(int56(200)));
+        assertTrue(isPending);
     }
 
     /**
@@ -199,33 +202,57 @@ contract AnalogVaultConfigChangesTest is Test {
     }
 
     /**
-     * Test 12: Cannot queue batch if single config is pending
+     * Test 12: Queuing batch overwrites existing single config
      */
-    function test_cannotQueueBatchIfSinglePending() public {
+    function test_queueBatchOverwritesSingleConfig() public {
         vault.queueConfigChange(1, int256(int256(int24(50))));
 
-        vm.expectRevert(AnalogVault.ConfigPending.selector);
         vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
+
+        // Single config should be cleared
+        (, , bool isPending) = vault.pendingConfig();
+        assertFalse(isPending, "Single config should be cleared");
+
+        // Batch should be set
+        (int24 pw, bool hw, , , , ) = vault.pendingBatch();
+        assertEq(pw, int24(60));
+        assertTrue(hw);
     }
 
     /**
-     * Test 13: Cannot queue single if batch is pending
+     * Test 13: Queuing single overwrites existing batch config
      */
-    function test_cannotQueueSingleIfBatchPending() public {
+    function test_queueSingleOverwritesBatchConfig() public {
         vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
 
-        vm.expectRevert(AnalogVault.ConfigPending.selector);
         vault.queueConfigChange(1, int256(int256(int24(50))));
+
+        // Batch should be cleared
+        (, bool hw, , bool hd, , bool ht) = vault.pendingBatch();
+        assertFalse(hw);
+        assertFalse(hd);
+        assertFalse(ht);
+
+        // Single config should be set
+        (uint8 changeType, int256 value, bool isPending) = vault.pendingConfig();
+        assertEq(changeType, 1);
+        assertEq(value, int256(int256(int24(50))));
+        assertTrue(isPending);
     }
 
     /**
-     * Test 14: Cannot queue batch if batch already pending
+     * Test 14: Queuing batch overwrites existing batch
      */
-    function test_cannotQueueBatchIfBatchPending() public {
+    function test_queueBatchOverwritesBatch() public {
         vault.queueBatchConfigChange(int24(60), true, int56(0), false, uint32(0), false);
 
-        vm.expectRevert(AnalogVault.ConfigPending.selector);
-        vault.queueBatchConfigChange(int24(70), true, int56(0), false, uint32(0), false);
+        vault.queueBatchConfigChange(int24(70), true, int56(150), true, uint32(0), false);
+
+        (int24 pw, bool hw, int56 d, bool hd, , ) = vault.pendingBatch();
+        assertEq(pw, int24(70));
+        assertTrue(hw);
+        assertEq(d, int56(150));
+        assertTrue(hd);
     }
 
     /**
@@ -273,5 +300,40 @@ contract AnalogVaultConfigChangesTest is Test {
 
         (,,,,,,,,,,, , , bool configPending) = vault.getPendingStates();
         assertTrue(configPending, "getPendingStates should report batch as pending");
+    }
+
+    // ─── OVERWRITE UNBLOCKS STUCK CONFIG TESTS ─────────────────────────
+
+    /**
+     * Test 20: Overwriting stuck batch with valid config unblocks the vault
+     */
+    function test_overwriteUnblocksStuckBatch() public {
+        // Queue an invalid positionWidth=1 (would revert on execute)
+        vault.queueBatchConfigChange(int24(1), true, int56(0), false, uint32(0), false);
+
+        // Overwrite with valid positionWidth=5
+        vault.queueBatchConfigChange(int24(5), true, int56(0), false, uint32(0), false);
+
+        (int24 pw, bool hw, , , , ) = vault.pendingBatch();
+        assertEq(pw, int24(5), "Should be overwritten to valid width");
+        assertTrue(hw);
+    }
+
+    /**
+     * Test 21: getPendingStates reflects overwritten config
+     */
+    function test_getPendingStatesAfterOverwrite() public {
+        vault.queueBatchConfigChange(int24(1), true, int56(150), true, uint32(600), true);
+        // Overwrite with single config — batch should be cleared
+        vault.queueConfigChange(3, int256(uint256(uint32(300))));
+
+        (,,,,,,,,,,, , , bool configPending) = vault.getPendingStates();
+        assertTrue(configPending, "Single config should show as pending");
+
+        // Verify batch is gone
+        (, bool hw, , bool hd, , bool ht) = vault.pendingBatch();
+        assertFalse(hw);
+        assertFalse(hd);
+        assertFalse(ht);
     }
 }
